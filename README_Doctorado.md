@@ -24,15 +24,15 @@ La guía práctica debe desarrollarse en el chat de **Implementación del proyec
 
 El trabajo se mantiene dentro de:
 
-\[
-	ext{dinámica vehicular}
-ightarrow
-	ext{información generada mediante IA}
-ightarrow
-	ext{arquitectura de control}
-ightarrow
-	ext{comportamiento closed-loop}
-\]
+$$
+\text{dinámica vehicular}
+\rightarrow
+\text{información generada mediante IA}
+\rightarrow
+\text{arquitectura de control}
+\rightarrow
+\text{comportamiento closed-loop}
+$$
 
 Quedan fuera del núcleo, salvo conexión directa con el controlador dinámico:
 
@@ -50,15 +50,15 @@ El fenómeno de interés es la **pérdida de validez en runtime de información 
 
 Ejemplo conceptual:
 
-\[
-f_\theta 	ext{ entrenado en } \mathcal D_{\text{train}}
-\]
+$$
+f_\theta \text{ entrenado en } \mathcal D_{\text{train}}
+$$
 
 opera después bajo:
 
-\[
+$$
 \mathcal D_{\text{runtime}} \neq \mathcal D_{\text{train}}
-\]
+$$
 
 por cambios de:
 
@@ -73,15 +73,15 @@ por cambios de:
 
 El problema de control aparece cuando:
 
-\[
-	ext{el controlador sigue usando información aprendida}
-\]
+$$
+\text{el controlador sigue usando información aprendida}
+$$
 
 aunque:
 
-\[
-	ext{su validez haya cambiado}.
-\]
+$$
+\text{su validez haya cambiado}.
+$$
 
 ---
 
@@ -89,37 +89,37 @@ aunque:
 
 Las herramientas principales que se desean estudiar son:
 
-\[
-\boxed{	ext{OOD detection} + 	ext{uncertainty estimation}}
-\]
+$$
+\boxed{\text{OOD detection} + \text{uncertainty estimation}}
+$$
 
 No se consideran el gap por sí mismas.
 
 Su papel es potencialmente producir una señal de:
 
-\[
-\boxed{	ext{validez / confianza runtime}}
-\]
+$$
+\boxed{\text{validez / confianza runtime}}
+$$
 
 que pueda modificar la influencia de la información aprendida sobre el controlador.
 
 Arquitectura conceptual:
 
-\[
+$$
 x_k
-ightarrow
+\rightarrow
 f_\theta
-ightarrow
+\rightarrow
 \{\hat y_k,\;U_k,\;OOD_k\}
-ightarrow
+\rightarrow
 C_k
-ightarrow
-	ext{controlador}
-ightarrow
+\rightarrow
+\text{controlador}
+\rightarrow
 u_k
-ightarrow
-	ext{vehículo}
-\]
+\rightarrow
+\text{vehículo}
+$$
 
 donde:
 
@@ -221,9 +221,9 @@ Preguntas:
 
 Opciones conceptuales:
 
-\[
+$$
 C = g(U,\;OOD)
-\]
+$$
 
 o mecanismos separados.
 
@@ -342,15 +342,15 @@ La métrica central no debe ser únicamente AUROC.
 
 La tesis debe cerrar el círculo:
 
-\[
+$$
 \boxed{
-	ext{runtime validity}
-ightarrow
-	ext{control decision}
-ightarrow
-	ext{vehicle closed-loop behavior}
+\text{runtime validity}
+\rightarrow
+\text{control decision}
+\rightarrow
+\text{vehicle closed-loop behavior}
 }
-\]
+$$
 
 Si el trabajo termina en NN → uncertainty → OOD AUROC, sin impacto explícito en control, la contribución queda demasiado cerca de ML aplicado.
 

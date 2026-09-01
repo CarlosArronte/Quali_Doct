@@ -14,27 +14,27 @@ Los modelos aprendidos utilizados dentro de arquitecturas de control vehicular p
 
 El problema doctoral no es simplemente detectar muestras OOD, sino estudiar:
 
-\[
+$$
 \boxed{
-	ext{cómo caracterizar runtime validity}
+\text{cómo caracterizar runtime validity}
 +
-	ext{cómo usarla dentro del control}
+\text{cómo usarla dentro del control}
 }
-\]
+$$
 
 La cadena causal que debe justificar la tesis es:
 
-\[
-	ext{operating-condition change}
-ightarrow
-	ext{learned-information validity change}
-ightarrow
-	ext{possible control degradation}
-ightarrow
-	ext{runtime validity estimation}
-ightarrow
-	ext{confidence-aware control reaction}.
-\]
+$$
+\text{operating-condition change}
+\rightarrow
+\text{learned-information validity change}
+\rightarrow
+\text{possible control degradation}
+\rightarrow
+\text{runtime validity estimation}
+\rightarrow
+\text{confidence-aware control reaction}.
+$$
 
 ---
 
@@ -116,9 +116,9 @@ Separar conceptualmente:
 #### Confidence / validity
 Explicar que:
 
-\[
-	ext{uncertainty} \neq 	ext{OOD} \neq 	ext{validity}
-\]
+$$
+\text{uncertainty} \neq \text{OOD} \neq \text{validity}
+$$
 
 aunque puedan estar relacionados.
 
@@ -134,15 +134,15 @@ La revisión debe buscar explícitamente:
 
 El objetivo NO es demostrar “nadie lo hizo”, sino responder:
 
-\[
+$$
 \boxed{
-	ext{qué existe}
-ightarrow
-	ext{qué resuelve}
-ightarrow
-	ext{qué limitaciones deja}
+\text{qué existe}
+\rightarrow
+\text{qué resuelve}
+\rightarrow
+\text{qué limitaciones deja}
 }
-\]
+$$
 
 ---
 
@@ -240,30 +240,30 @@ No congelar todavía. Candidatas:
 
 ### C1 — Characterization
 Caracterizar relación entre:
-\[
-	ext{shift}
-ightarrow
+$$
+\text{shift}
+\rightarrow
 OOD
-ightarrow
+\rightarrow
 U
-ightarrow
-	ext{prediction/control-relevant error}.
-\]
+\rightarrow
+\text{prediction/control-relevant error}.
+$$
 
 ### C2 — Confidence / validity representation
 Proponer una señal:
-\[
+$$
 C = g(OOD,U)
-\]
+$$
 o demostrar cuándo conviene mantener ambas separadas.
 
 ### C3 — Control integration
 Definir mecanismo para:
-\[
+$$
 C
-ightarrow
-	ext{control authority / robustness / constraints / fallback}.
-\]
+\rightarrow
+\text{control authority / robustness / constraints / fallback}.
+$$
 
 ### C4 — Closed-loop evaluation
 Demostrar experimentalmente cómo validity awareness afecta:
@@ -350,10 +350,10 @@ Al terminar, el lector debería poder responder:
 
 ## 15. Frase guía del proyecto
 
-\[
+$$
 \boxed{
-	ext{No buscamos demostrar que OOD + uncertainty sea nuevo.}
+\text{No buscamos demostrar que OOD + uncertainty sea nuevo.}
 }
-\]
+$$
 
 Buscamos demostrar que existe un problema de **runtime validity de información aprendida dentro del control vehicular**, que merece una solución y una evaluación propias.
