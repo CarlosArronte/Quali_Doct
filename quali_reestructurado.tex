@@ -1,0 +1,1046 @@
+\documentclass[12pt,a4paper]{report}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish]{babel}
+\usepackage{geometry}
+\usepackage{setspace}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{longtable}
+
+\geometry{
+    left=3cm,
+    right=2cm,
+    top=3cm,
+    bottom=2cm
+}
+
+\onehalfspacing
+
+\begin{document}
+
+% ============================================================
+% PORTADA
+% ============================================================
+
+\begin{titlepage}
+    \centering
+
+    {\Large Universidad XXXXX\par}
+    \vspace{0.5cm}
+
+    {\Large Programa de Doctorado en XXXXX\par}
+
+    \vspace{3cm}
+
+    {\LARGE \textbf{Título provisional de la investigación}\par}
+
+    \vspace{1cm}
+
+    {\large
+    Estimación de validez en tiempo de ejecución para la integración
+    de modelos híbridos aprendidos en control de dinámica vehicular
+    \par}
+
+    \vfill
+
+    {\large Nombre del doctorando\par}
+    {\large Director / Orientador\par}
+
+    \vspace{1cm}
+
+    {\large Año\par}
+
+\end{titlepage}
+
+
+% ============================================================
+% RESUMEN
+% ============================================================
+
+\begin{abstract}
+
+% Escribir esta sección al final.
+%
+% El resumen deberá contener, en este orden:
+%
+% 1. Contexto:
+%    - los modelos aprendidos e híbridos permiten compensar
+%      discrepancias de modelos físicos en control vehicular;
+%    - su utilidad closed-loop depende de que la información aprendida
+%      siga siendo válida durante la operación.
+%
+% 2. Problema:
+%    - la validez puede degradarse cuando el vehículo opera en
+%      regímenes físicos, regiones de estado o condiciones de entrada
+%      no representadas durante el entrenamiento;
+%    - el controlador puede continuar utilizando información aprendida
+%      aun cuando esta pierda confiabilidad.
+%
+% 3. Propuesta:
+%    - modelo physics + learned residual;
+%    - caracterización runtime mediante incertidumbre aleatoria,
+%      incertidumbre epistémica, calibración y un indicador OOD de
+%      bajo costo computacional;
+%    - construcción de una señal de validez/confianza C_k;
+%    - uso de C_k para adaptar un MPC/NMPC.
+%
+% 4. Evaluación:
+%    - shifts vehiculares físicamente interpretables;
+%    - comparación con baselines sin validity awareness, validity-only
+%      y OOD-only;
+%    - métricas de modelo, validity/OOD y, principalmente, closed-loop.
+%
+% 5. Contribución esperada:
+%    - control-relevant validity estimation;
+%    - validity-aware vehicle control;
+%    - runtime validity characterization;
+%    - eventualmente, taxonomía experimental de shifts vehiculares.
+
+\end{abstract}
+
+\tableofcontents
+
+
+% ============================================================
+% CAPÍTULO 1
+% ============================================================
+
+\chapter{Introducción}
+
+% La introducción debe construir UNA única cadena causal:
+%
+% cambio de condición operativa
+% -> cambio de validez de la información aprendida
+% -> posible degradación del control
+% -> estimación runtime de validez
+% -> reacción del controlador.
+%
+% No presentar OOD + uncertainty como el ``gap'' en sí mismo.
+% Son herramientas candidatas para estimar validez runtime.
+
+\section{Contexto y motivación}
+
+% Desarrollar desde el problema físico/controlístico:
+%
+% - la dinámica vehicular depende de condiciones operativas y de
+%   parámetros que pueden variar durante la conducción;
+% - modelos físicos control-oriented son útiles pero presentan
+%   discrepancias frente a la planta real;
+% - modelos híbridos physics + learning permiten aprender parte
+%   del model mismatch conservando estructura física;
+% - el uso de información aprendida dentro del lazo de control
+%   introduce una nueva dependencia: su validez durante runtime.
+%
+% Evitar una introducción general a IA, vehículos autónomos o
+% Machine Learning que no contribuya directamente al problema.
+
+\section{Problema científico}
+
+% Formular el problema central aproximadamente como:
+%
+% Un modelo híbrido de dinámica vehicular puede ofrecer mejores
+% predicciones que un modelo físico nominal dentro del dominio
+% representado por los datos. Sin embargo, cuando cambian las
+% condiciones de operación, el residual aprendido puede dejar de
+% representar correctamente el model mismatch. El problema no es
+% únicamente detectar una muestra OOD, sino estimar si la información
+% aprendida continúa siendo suficientemente válida para que un
+% controlador la utilice y definir cómo debe reaccionar el control
+% cuando esa validez disminuye.
+%
+% Definir explícitamente que la tesis estudia:
+%
+% (1) runtime validity characterization;
+% (2) control-relevant validity estimation;
+% (3) validity-aware control reaction.
+
+\section{Delimitación del problema}
+
+% Dominio principal:
+% - dinámica vehicular;
+% - modelo híbrido physics + learned residual;
+% - MPC/NMPC como controlador receptor.
+%
+% Fuera del núcleo de la tesis, salvo conexión directa:
+% - percepción;
+% - detección de objetos;
+% - planificación global;
+% - predicción de otros agentes;
+% - assurance del stack completo de autonomía.
+%
+% CBF: extensión opcional, no elemento obligatorio para validar
+% la hipótesis principal.
+%
+% DAgger/reentrenamiento online: extensión opcional si el calendario
+% permite estudiarlo y si la degradación observada se asocia
+% principalmente a incertidumbre epistémica.
+
+\section{Brecha de investigación}
+
+% Esta sección se redactará después de cerrar la revisión bibliográfica.
+%
+% Regla de seguridad:
+% NO afirmar ``nadie combina OOD y uncertainty''.
+%
+% La brecha debe construirse como una limitación en el cierre del ciclo:
+%
+% learned vehicle dynamics
+% -> runtime validity
+% -> control decision
+% -> closed-loop behavior.
+%
+% Formulación provisional segura:
+%
+% Los modelos aprendidos son utilizados para proporcionar información
+% relevante para control en aplicaciones de dinámica vehicular, y
+% existen mecanismos de uncertainty estimation, OOD detection,
+% robust/adaptive control y runtime monitoring. Sin embargo, la tesis
+% investiga específicamente cómo caracterizar la validez runtime de un
+% residual aprendido bajo shifts vehiculares físicamente interpretables
+% y cómo traducir esa caracterización en modificaciones explícitas de
+% un MPC/NMPC, evaluando el efecto sobre el desempeño closed-loop.
+%
+% Sustituir esta formulación por una versión sustentada en literatura
+% una vez completada la tabla maestra del estado del arte.
+
+\section{Pregunta de investigación}
+
+\begin{quote}
+\textbf{¿Cómo estimar en tiempo de ejecución la validez de un modelo
+residual aprendido de dinámica vehicular y utilizar esa estimación para
+adaptar un controlador MPC/NMPC ante condiciones de operación no
+representadas durante el entrenamiento?}
+\end{quote}
+
+% Esta versión incorpora las decisiones D1--D7 sin comprometer todavía
+% una técnica concreta de fusión ni una garantía formal de estabilidad.
+
+\section{Preguntas específicas de investigación}
+
+\begin{enumerate}[label=\textbf{P\arabic*:}]
+    \item ¿Qué tipos de shifts físicamente relevantes en dinámica
+    vehicular producen pérdida significativa de validez del residual
+    aprendido?
+
+    \item ¿Qué información proporcionan la incertidumbre epistémica,
+    la incertidumbre aleatoria, la calibración y un indicador OOD sobre
+    el error del modelo relevante para control?
+
+    \item ¿En qué medida las señales de uncertainty, calibration y OOD
+    son complementarias o redundantes para caracterizar validez runtime?
+
+    \item ¿Cómo construir una señal de confianza/validez
+    \(C_k=g(U_{\mathrm{epi}},U_{\mathrm{ale}},\mathrm{Calibration},
+    \mathrm{OOD})\) que guarde relación con el error relevante para el
+    controlador?
+
+    \item ¿Cómo debe utilizarse \(C_k\) para adaptar el horizonte de un
+    MPC/NMPC de manera que se reduzca la degradación closed-loop cuando
+    disminuye la validez del modelo aprendido?
+
+    \item ¿Qué mejora ofrece la arquitectura propuesta frente a un
+    controlador basado únicamente en el modelo físico, un controlador
+    que utiliza el modelo aprendido sin monitoreo de validez y
+    arquitecturas que utilizan únicamente validity o únicamente OOD?
+
+    \item Como extensión opcional, ¿puede la información de validez
+    emplearse para modificar la acción de una CBF o activar estrategias
+    de actualización de datos/modelo ante incertidumbre epistémica?
+\end{enumerate}
+
+\section{Hipótesis de investigación}
+
+\begin{quote}
+\textbf{La combinación calibrada de incertidumbre epistémica,
+incertidumbre aleatoria y evidencia de distribución fuera del dominio
+puede proporcionar una estimación útil de la validez runtime de un
+residual aprendido de dinámica vehicular; al incorporar explícitamente
+esta estimación en la adaptación de un controlador MPC/NMPC, es posible
+reducir la degradación de desempeño closed-loop bajo cambios de régimen
+respecto a arquitecturas que utilizan el modelo aprendido sin
+validity awareness.}
+\end{quote}
+
+% Esta hipótesis debe presentarse como algo a validar, no como resultado.
+% Si la revisión muestra que conviene mantener uncertainty y OOD como
+% señales separadas, reformular la parte de ``combinación'' sin alterar
+% el problema científico central.
+
+
+% ============================================================
+% CAPÍTULO 2
+% ============================================================
+
+\chapter{Objetivos}
+
+\section{Objetivo general}
+
+Desarrollar y evaluar una metodología de estimación de validez en tiempo
+real para un modelo híbrido de dinámica vehicular basado en un modelo
+físico y un residual aprendido, e integrar dicha estimación en un
+controlador MPC/NMPC para reducir la degradación del desempeño
+closed-loop ante condiciones de operación no representadas durante el
+entrenamiento.
+
+\section{Objetivos específicos}
+
+\begin{enumerate}[label=\textbf{OE\arabic*:}]
+    \item Formular una arquitectura híbrida de dinámica vehicular
+    compuesta por un modelo físico control-oriented y un residual
+    aprendido.
+
+    \item Definir operacionalmente los tipos de shift/OOD relevantes
+    para el estudio, distinguiendo al menos régimen físico no
+    representado y dynamics OOD, e incluyendo input OOD si el alcance
+    temporal lo permite.
+
+    \item Estimar y calibrar incertidumbre aleatoria y epistémica del
+    modelo aprendido mediante un modelo heteroscedástico y un ensemble
+    pequeño, complementado con un indicador OOD de bajo costo
+    computacional.
+
+    \item Caracterizar experimentalmente la relación entre shift,
+    uncertainty, calibration, OOD, error de predicción y error relevante
+    para control.
+
+    \item Definir una representación de confianza/validez runtime
+    \(C_k=g(U_{\mathrm{epi}},U_{\mathrm{ale}},\mathrm{Calibration},
+    \mathrm{OOD})\) y evaluar su capacidad para anticipar o representar
+    degradación del modelo útil para el controlador.
+
+    \item Integrar la señal de validez en un MPC/NMPC mediante adaptación
+    de su horizonte y evaluar el efecto sobre desempeño y robustez
+    empírica closed-loop.
+
+    \item Comparar la propuesta con arquitecturas de referencia que
+    separen el efecto del modelo aprendido, la estimación de validez y
+    la detección OOD.
+
+    \item Como extensión, si el cronograma lo permite, evaluar el uso de
+    la señal de validez en una CBF y/o una estrategia de adquisición y
+    reentrenamiento basada en DAgger para condiciones asociadas a
+    incertidumbre epistémica.
+\end{enumerate}
+
+
+% ============================================================
+% CAPÍTULO 3
+% ============================================================
+
+\chapter{Fundamentos de dinámica y control vehicular}
+
+% Este capítulo sustituye la fundamentación genérica sobre ``sistemas
+% dinámicos'' e ``IA'' del documento anterior. Debe contener solamente
+% los fundamentos necesarios para comprender el problema doctoral.
+
+\section{Dinámica vehicular relevante para control}
+
+% Incluir únicamente lo necesario:
+% - estados dinámicos seleccionados;
+% - entradas de control;
+% - dinámica longitudinal/lateral/yaw según el modelo elegido;
+% - interacción neumático--carretera;
+% - papel de \mu y del régimen de operación;
+% - regiones cercanas a saturación/handling limits si se estudian.
+%
+% Conectar siempre con el problema de cambio de régimen y model mismatch.
+
+\section{Modelos control-oriented y model mismatch}
+
+% Explicar:
+% - por qué se utilizan modelos físicos simplificados en control;
+% - fuentes de discrepancia modelo--planta;
+% - efecto de parámetros desconocidos/variables;
+% - por qué un residual aprendido puede ser útil;
+% - por qué ese residual puede perder validez fuera del dominio de datos.
+
+\section{Modelos híbridos: physics + learned residual}
+
+% Definir formalmente una arquitectura del tipo:
+%
+% x_{k+1} = f_{phys}(x_k,u_k) + r_\theta(x_k,u_k) + w_k
+%
+% donde r_theta aprende la discrepancia residual.
+%
+% Precisar posteriormente:
+% - variables de entrada;
+% - salida residual;
+% - horizonte de uso;
+% - frecuencia de actualización;
+% - hipótesis del modelo físico.
+%
+% No convertir esta sección en una comparación exhaustiva de algoritmos ML.
+
+\section{Control predictivo basado en modelo}
+
+% Presentar MPC/NMPC solo al nivel necesario para la tesis:
+% - modelo de predicción;
+% - horizonte;
+% - función de costo;
+% - restricciones;
+% - receding horizon;
+% - sensibilidad a errores de modelo.
+%
+% Introducir el horizonte N como principal variable de adaptación
+% propuesta. No fijar todavía si C bajo implica aumentar o disminuir N:
+% esta relación debe justificarse en la metodología/experimentos.
+
+\section{Control Barrier Functions como extensión opcional}
+
+% Sección breve y explícitamente secundaria.
+%
+% Explicar:
+% - papel de una CBF como safety filter;
+% - parámetro(s) que determinan la agresividad/conservadurismo;
+% - cómo C_k podría modular dichos parámetros.
+%
+% No prometer garantía formal de seguridad hasta demostrar que la
+% arquitectura y los supuestos permiten esa afirmación.
+
+
+% ============================================================
+% CAPÍTULO 4
+% ============================================================
+
+\chapter{Información aprendida y validez en tiempo de ejecución}
+
+\section{Información aprendida relevante para el controlador}
+
+% La información aprendida principal de la tesis NO es una taxonomía
+% genérica de salidas de IA. Es el residual/model mismatch incorporado
+% al modelo de predicción del controlador.
+%
+% Situar otros roles funcionales de modelos aprendidos solo como contexto
+% bibliográfico: full learned dynamics, learned tire/force models,
+% estimadores de parámetros, etc.
+
+\section{Incertidumbre predictiva}
+
+\subsection{Incertidumbre aleatoria}
+
+% Definición, interpretación y papel dentro del modelo heteroscedástico.
+% Relacionar con ruido/variabilidad no reducible bajo los supuestos del
+% modelo, evitando equipararla automáticamente con invalidity.
+
+\subsection{Incertidumbre epistémica}
+
+% Definición e interpretación como incertidumbre asociada al conocimiento
+% del modelo/datos. Introducir el small ensemble como mecanismo candidato.
+% Relacionarla con regiones poco representadas, pero no afirmar que
+% epistemic uncertainty sea equivalente a OOD.
+
+\subsection{Calibración}
+
+% Explicar por qué no basta con producir una varianza: la incertidumbre
+% debe contrastarse con la frecuencia/magnitud real de los errores.
+% Definir las métricas de calibration que finalmente se utilicen.
+
+\section{OOD y distribution shift en dinámica vehicular}
+
+% Separar explícitamente las categorías operacionales elegidas.
+
+\subsection{Régimen físico no representado}
+
+% Caso principal: cambios de parámetros/condiciones físicas no presentes
+% durante entrenamiento. Ejemplo prioritario: variaciones desconocidas
+% de coeficiente de fricción \mu.
+
+\subsection{Dynamics OOD}
+
+% Regiones de estado/dinámica nunca vistas o insuficientemente cubiertas
+% durante entrenamiento. Ejemplo de escenario: V_x > V_{x,\max}^{train}
+% o regiones dinámicas no representadas.
+
+\subsection{Input OOD}
+
+% Extensión opcional si el cronograma lo permite. Definir qué entradas
+% del modelo constituyen input OOD y cómo se distingue de dynamics OOD.
+
+\subsection{Fallo o degradación sensorial}
+
+% Escenario opcional. Incluir solo si se demuestra que produce una
+% alteración relevante en la información consumida por el modelo/control.
+% No mezclar automáticamente sensor fault con dynamics OOD.
+
+\section{Validez/confianza runtime}
+
+% Sección central del marco conceptual.
+%
+% Establecer explícitamente:
+%
+% uncertainty != OOD != validity.
+%
+% Proponer una señal de trabajo:
+\begin{equation}
+C_k = g\!\left(
+U_{\mathrm{epi},k},
+U_{\mathrm{ale},k},
+\mathrm{Cal}_k,
+S_{\mathrm{OOD},k}
+\right),
+\end{equation}
+%
+% donde C_k no se define como ``probabilidad de estar correcto'' salvo
+% que posteriormente exista una calibración que justifique esa lectura.
+%
+% La señal debe evaluarse por su relación con error relevante para
+% control, no solo por AUROC de detección.
+
+\section{Validez relevante para control}
+
+% Diferenciar:
+% - error estadístico del predictor;
+% - error dinámico acumulado/multi-step;
+% - error que altera la optimización del MPC/NMPC;
+% - degradación closed-loop.
+%
+% Esta sección es una de las claves para demostrar profundidad doctoral.
+
+
+% ============================================================
+% CAPÍTULO 5
+% ============================================================
+
+\chapter{Estado del arte}
+
+\section{Estrategia de revisión de literatura}
+
+% Documentar:
+% - bases de datos;
+% - período;
+% - strings de búsqueda;
+% - criterios de inclusión/exclusión;
+% - proceso de selección;
+% - uso de reviews para terminología y de primarios para evidencia;
+% - tabla maestra de papers cercanos.
+%
+% Mantener separada la evidencia bibliográfica de las decisiones propias.
+
+\section{Modelos aprendidos e híbridos en control de dinámica vehicular}
+
+% Organizar por rol funcional, no por algoritmo:
+% 1. full learned dynamics;
+% 2. hybrid physics + learning;
+% 3. residual/model-mismatch learning;
+% 4. learned tire/force/parameter models.
+%
+% Para cada familia responder:
+% ¿qué información produce el modelo y cómo modifica el controlador?
+
+\section{Uncertainty-aware learned dynamics para control}
+
+% Revisar trabajos con:
+% - epistemic/aleatoric/predictive uncertainty;
+% - calibration;
+% - MPC/NMPC con learned models;
+% - mecanismos robust/adaptive/stochastic relacionados.
+%
+% Extraer no solo técnica UQ sino cómo la incertidumbre afecta control.
+
+\section{OOD, distribution shift y runtime monitoring}
+
+% Revisar:
+% - OOD detection for dynamics models;
+% - distribution shift;
+% - residual/change detection;
+% - temporal shifts;
+% - runtime monitors en robotics/CPS cuando el mecanismo sea transferible.
+%
+% Distinguir detector de shift de estimador de validez.
+
+\section{Validity-aware y confidence-aware control}
+
+% Buscar explícitamente trabajos donde una señal de confianza/validez:
+% - cambie autoridad del learned model;
+% - modifique restricciones/pesos/horizonte;
+% - active fallback;
+% - aumente robustificación;
+% - module safety filters.
+%
+% Esta sección debe contener los trabajos que más amenazan/apoyan la
+% contribución doctoral.
+
+\section{Síntesis crítica y brecha}
+
+% Construir una tabla comparativa con columnas equivalentes a:
+%
+% Referencia | Dominio | Learned information | Modelo AI | Controlador |
+% Uncertainty | OOD | Definición de validity | Shift | Cómo validity
+% modifica control | Closed-loop property | Guarantee | Validation |
+% Real-time | Limitación | Aporte a la tesis.
+%
+% La síntesis debe responder:
+%
+% qué existe -> qué resuelve -> qué limitaciones deja.
+%
+% Solo después de esta síntesis congelar la formulación final del gap.
+
+
+% ============================================================
+% CAPÍTULO 6
+% ============================================================
+
+\chapter{Marco conceptual y arquitectura propuesta}
+
+\section{Cadena shift--validity--control}
+
+% Figura conceptual recomendada:
+%
+% operating-condition shift
+% -> learned residual
+% -> {prediction, U_epi, U_ale, calibration, OOD}
+% -> C_k
+% -> MPC/NMPC adaptation
+% -> u_k
+% -> vehicle
+% -> closed-loop metrics.
+
+\section{Modelo híbrido de predicción}
+
+% Presentar formalmente la combinación physics + learned residual.
+% La implementación concreta se detallará después, pero aquí debe quedar
+% claro qué información consume el MPC/NMPC.
+
+\section{Estimador de validez}
+
+% Arquitectura conceptual:
+% - heteroscedastic model -> aleatoric uncertainty;
+% - small ensemble -> epistemic uncertainty;
+% - calibration layer/assessment;
+% - cheap OOD score;
+% - fusión/representación C_k.
+%
+% La función g puede ser heurística, aprendida o basada en calibración,
+% pero la selección debe justificarse por su relación con control error.
+
+\section{Integración con MPC/NMPC}
+
+% Decisión D6 principal:
+% C_k -> adaptación del horizonte del MPC/NMPC.
+%
+% Definir en esta sección, cuando se cierre el diseño:
+% - variable adaptada: N_k;
+% - límites N_min, N_max;
+% - regla N_k = h(C_k);
+% - suavizado/histeresis si fuese necesario;
+% - implicaciones computacionales;
+% - comportamiento ante C no disponible/no confiable.
+%
+% No asumir a priori la dirección óptima de la adaptación.
+
+\section{Extensiones opcionales}
+
+\subsection{Modulación de una CBF}
+
+% Si se implementa:
+% C_k -> parámetro de agresividad/conservadurismo de la CBF.
+% Especificar posteriormente qué parámetro se modifica y qué propiedad
+% se pretende preservar/evaluar.
+
+\subsection{Adquisición de datos y reentrenamiento}
+
+% Si el tiempo lo permite y la incertidumbre dominante es epistémica:
+% - utilizar eventos de baja validez para recolectar datos;
+% - estudiar DAgger o estrategia equivalente;
+% - evaluar offline/online según viabilidad y seguridad.
+%
+% Esta extensión NO es necesaria para validar la contribución principal.
+
+
+% ============================================================
+% CAPÍTULO 7
+% ============================================================
+
+\chapter{Metodología de investigación y validación}
+
+\section{Estrategia general}
+
+\begin{enumerate}[label=\textbf{E\arabic*:}]
+    \item Establecer el modelo físico control-oriented y el controlador
+    MPC/NMPC de referencia.
+
+    \item Entrenar el residual aprendido y cuantificar su mejora y sus
+    límites frente al modelo físico dentro del dominio nominal.
+
+    \item Implementar estimación de incertidumbre aleatoria y epistémica,
+    calibración y un score OOD de bajo costo.
+
+    \item Diseñar shifts vehiculares físicamente interpretables y
+    caracterizar cómo afectan predicción, incertidumbre, OOD y validez.
+
+    \item Construir y validar la señal \(C_k\) respecto a error relevante
+    para control.
+
+    \item Integrar \(C_k\) en la adaptación del MPC/NMPC.
+
+    \item Comparar baselines y propuesta bajo condiciones nominales y OOD.
+
+    \item Evaluar robustez empírica y, si el desarrollo lo permite,
+    incorporar extensiones CBF y/o DAgger.
+\end{enumerate}
+
+\section{Escenarios de shift}
+
+\subsection{Cambio de fricción desconocida}
+
+% Escenario prioritario D7.
+% Justificar por qué variaciones de \mu representan un cambio de régimen
+% físico con impacto directo sobre dinámica y residual aprendido.
+
+\subsection{Extensión del rango de velocidad}
+
+% Escenario prioritario D7:
+% V_x > V_{x,\max}^{train}.
+% Definir claramente V_{x,max}^{train} y separar extrapolación de estado
+% de cambios físicos de \mu.
+
+\subsection{Fallo/degradación de sensores}
+
+% Escenario opcional D7.
+% Definir tipo de fallo, variable afectada y por qué constituye un shift
+% relevante para el modelo/control. No incluirlo si no puede aislarse
+% experimentalmente.
+
+\subsection{Input OOD}
+
+% Escenario opcional D3.
+% Añadir solo si existe tiempo suficiente y una definición operacional
+% clara diferente de dynamics OOD.
+
+\section{Modelo aprendido e incertidumbre}
+
+% D4:
+% - heteroscedastic model;
+% - small ensemble;
+% - aleatoric + epistemic;
+% - calibration;
+% - cheap OOD score.
+%
+% Reportar costo computacional porque el uso es runtime.
+
+\section{Construcción y evaluación de la señal de validez}
+
+% D5:
+% C = g(U_epi, U_ale, Calibration, OOD).
+%
+% Evaluar al menos:
+% - correlación/asociación con prediction error;
+% - asociación con multi-step/model error relevante para MPC;
+% - capacidad de discriminar regiones de degradación;
+% - sensibilidad a shifts;
+% - redundancia/complementariedad de componentes;
+% - latencia/costo.
+
+\section{Integración validity-aware con MPC/NMPC}
+
+% D6:
+% - adaptar horizonte MPC/NMPC;
+% - determinar regla h(C) y límites;
+% - evaluar desempeño, factibilidad y costo computacional;
+% - evitar prometer recursive feasibility hasta demostrarla.
+
+\section{Baselines y ablation study}
+
+% D9. Comparaciones mínimas:
+
+\begin{description}
+    \item[\textbf{B0 -- Physics-only:}]
+    controlador con modelo físico sin residual aprendido.
+
+    \item[\textbf{B1 -- Learned/no-awareness:}]
+    controlador con modelo physics + learned residual, sin estimación de
+    validity ni detección OOD.
+
+    \item[\textbf{B2 -- Validity/uncertainty-only:}]
+    controlador con modelo aprendido y señal construida a partir de
+    uncertainty/calibration, excluyendo el componente OOD explícito.
+
+    \item[\textbf{B3 -- OOD-only:}]
+    controlador con modelo aprendido y reacción basada únicamente en el
+    score OOD, sin estimación probabilística de uncertainty.
+
+    \item[\textbf{P -- Proposed:}]
+    controlador con modelo physics + learned residual y señal
+    \(C_k=g(U_{\mathrm{epi}},U_{\mathrm{ale}},\mathrm{Cal},OOD)\),
+    utilizada para adaptar el MPC/NMPC.
+\end{description}
+
+% Si es posible, incluir una comparación ``oracle'' con conocimiento
+% perfecto del shift/error solamente como upper bound experimental,
+% no como baseline obligatorio de la tesis.
+
+\section{Métricas de evaluación}
+
+\subsection{Métricas del modelo}
+
+% - RMSE / MAE;
+% - NLL;
+% - multi-step prediction error;
+% - residual error.
+
+\subsection{Métricas de uncertainty, calibration y OOD}
+
+% - calibration error / coverage según representación elegida;
+% - NLL u otras proper scoring rules;
+% - AUROC / AUPR / FPR@TPR para OOD cuando corresponda;
+% - correlación con error;
+% - detection delay para shifts temporales;
+% - costo computacional.
+
+\subsection{Métricas closed-loop}
+
+% Estas son las métricas principales de la tesis:
+% - tracking error;
+% - errores de estados dinámicos relevantes;
+% - constraint violations;
+% - control effort;
+% - feasibility;
+% - recovery after shift;
+% - indicadores de estabilidad/robustez cuando sea válido;
+% - computation time / sampling deadline.
+
+\section{Criterio de robustez empírica}
+
+% D10:
+% Definir una métrica de degradación de costo/desempeño frente a shift.
+% La idea a evaluar será:
+\begin{equation}
+\Delta J_{\mathrm{prop}} < \Delta J_{\mathrm{baseline}},
+\end{equation}
+% donde Delta J mide el aumento de costo o degradación respecto a la
+% condición nominal. Definir J y Delta J antes de los experimentos.
+%
+% Esta relación debe tratarse como criterio empírico, no como proof de
+% robustez matemática salvo desarrollo teórico adicional.
+
+\section{Nivel de garantía y alcance de las conclusiones}
+
+% D10:
+% Compromiso principal:
+% - evaluación experimental rigurosa;
+% - robustez empírica.
+%
+% Posible extensión:
+% - probabilistic calibration/bounds, si da tiempo y los supuestos son
+%   defendibles.
+%
+% No prometer todavía:
+% - estabilidad formal;
+% - recursive feasibility;
+% - constraint satisfaction garantizada;
+% - safety formal via CBF.
+%
+% Si alguna de estas propiedades se demuestra durante el doctorado,
+% actualizar el alcance en la versión final de la tesis.
+
+\section{Análisis estadístico y reproducibilidad}
+
+% Definir antes de ejecutar la campaña final:
+% - número de repeticiones/semillas;
+% - intervalos de confianza;
+% - comparación pareada entre arquitecturas;
+% - reporte de fallos/violaciones, no solo promedios;
+% - criterios de éxito/fallo;
+% - costo computacional y deadline de ejecución.
+
+
+% ============================================================
+% CAPÍTULO 8
+% ============================================================
+
+\chapter{Resultados preliminares}
+
+% Incluir únicamente evidencia ya obtenida y directamente conectada con
+% la viabilidad de la tesis.
+%
+% Una estructura útil sería:
+
+\section{Viabilidad del modelado aprendido de dinámica vehicular}
+
+% Resultados que muestren que el residual/modelo aprendido puede capturar
+% parte del model mismatch en condiciones nominales.
+
+\section{Comportamiento de uncertainty y OOD bajo shifts}
+
+% Solo si ya existen resultados suficientemente maduros.
+% Presentar casos donde las señales responden o fallan, no solo resultados
+% favorables. Relacionar con D3--D5.
+
+\section{Integración preliminar con control}
+
+% Si existe una implementación cerrada o parcial, mostrar:
+% - arquitectura;
+% - métricas closed-loop;
+% - costo computacional;
+% - limitaciones actuales.
+
+\section{Discusión de resultados preliminares}
+
+% Separar explícitamente:
+% - evidencia ya demostrada;
+% - indicios;
+% - hipótesis todavía no verificadas;
+% - decisiones metodológicas que los resultados obligan a revisar.
+
+
+% ============================================================
+% CAPÍTULO 9
+% ============================================================
+
+\chapter{Contribuciones esperadas}
+
+% D8. Presentarlas como contribuciones candidatas/esperadas hasta que la
+% evidencia bibliográfica y experimental permita congelarlas.
+
+\section{Control-relevant validity estimation}
+
+% Método/criterio para estimar si el residual aprendido conserva validez
+% suficiente para su uso por el controlador, utilizando uncertainty,
+% calibration y OOD con relación explícita al error relevante para control.
+
+\section{Validity-aware vehicle control}
+
+% Arquitectura que traduzca la estimación de validez en una modificación
+% explícita del MPC/NMPC y demuestre su efecto closed-loop.
+
+\section{Runtime validity characterization}
+
+% Caracterización sistemática de cómo diferentes shifts vehiculares
+% afectan residual error, uncertainty, calibration, OOD y comportamiento
+% closed-loop.
+
+\section{Taxonomía experimental de shifts vehiculares}
+
+% Contribución opcional si la campaña experimental alcanza suficiente
+% amplitud y profundidad. No prometerla como contribución principal en la
+% qualificação si todavía no existe evidencia suficiente.
+
+\section{Extensiones potenciales}
+
+% - modulación validity-aware de CBF;
+% - DAgger/reentrenamiento orientado por incertidumbre epistémica;
+% - probabilistic bounds/calibration más fuertes.
+%
+% Presentarlas como extensiones, no como requisitos para que la tesis sea
+% científicamente completa.
+
+
+% ============================================================
+% CAPÍTULO 10
+% ============================================================
+
+\chapter{Plan de trabajo}
+
+\section{Actividades restantes}
+
+% Relacionar actividades con OE1--OE8.
+%
+% Sugerencia de bloques:
+% A1. cerrar revisión y gap;
+% A2. formalizar modelo physics + residual;
+% A3. consolidar UQ + calibration + OOD;
+% A4. construir C_k;
+% A5. integrar MPC/NMPC adaptive horizon;
+% A6. campaña de shifts y baselines;
+% A7. robustez empírica + análisis estadístico;
+% A8. extensiones opcionales;
+% A9. publicaciones;
+% A10. redacción de tesis.
+
+\section{Cronograma}
+
+% Insertar cronograma realista del tiempo restante.
+% Marcar CBF, DAgger, input OOD, sensor fault y probabilistic bounds como
+% actividades opcionales o condicionadas al cumplimiento de hitos
+% principales.
+
+\section{Hitos de decisión}
+
+% H1. gap y pregunta final sustentados bibliográficamente.
+% H2. residual + uncertainty calibrada operando en nominal/OOD.
+% H3. C_k validada respecto a control-relevant error.
+% H4. MPC/NMPC validity-aware comparado contra B0--B3.
+% H5. campaña final y robustez empírica.
+% H6. decisión go/no-go para extensiones CBF/DAgger/bounds.
+
+
+% ============================================================
+% CAPÍTULO 11
+% ============================================================
+
+\chapter{Riesgos, limitaciones y estrategias de mitigación}
+
+\section{Riesgo de redundancia entre uncertainty y OOD}
+
+% Mitigación:
+% realizar ablaciones B2/B3 y estudiar complementariedad antes de fijar g.
+% Si son redundantes, la contribución puede mantenerse como validity-aware
+% control con la representación mínima que resulte informativa.
+
+\section{Riesgo de mala calibración o mala correlación con error}
+
+% Mitigación:
+% evaluar calibración explícitamente y no asumir que variance = validity.
+% Considerar recalibración o representación alternativa de C.
+
+\section{Riesgo de que la adaptación del horizonte no mejore closed-loop}
+
+% Mitigación:
+% formularlo como hipótesis experimental; comparar reglas h(C), límites y
+% condiciones de aplicación. La contribución debe incluir resultados
+% negativos o condiciones de validez si son científicamente relevantes.
+
+\section{Riesgo computacional}
+
+% Mitigación:
+% small ensemble + cheap OOD score; medir inference/optimization time y
+% sampling deadline. Reducir complejidad si runtime no es viable.
+
+\section{Riesgo de sobreextensión del alcance}
+
+% Mitigación:
+% núcleo obligatorio: physics+residual + UQ/calibration/OOD + C + MPC/NMPC
+% + baselines + shifts principales.
+% Opcional: CBF, DAgger, input OOD, sensor fault, probabilistic bounds.
+
+\section{Limitaciones de garantías formales}
+
+% La tesis se compromete inicialmente con evaluación experimental rigurosa
+% y robustez empírica. Explicitar que esto no equivale a estabilidad o
+% seguridad formal.
+
+
+% ============================================================
+% CAPÍTULO 12
+% ============================================================
+
+\chapter{Conclusiones del examen de calificación}
+
+% No son conclusiones finales de la tesis.
+%
+% Resumir:
+% 1. problema: pérdida de validez runtime de residual aprendido;
+% 2. gap sustentado por la revisión;
+% 3. pregunta e hipótesis;
+% 4. arquitectura physics+residual + validity estimator + MPC/NMPC;
+% 5. shifts prioritarios;
+% 6. estrategia experimental y baselines;
+% 7. evidencia preliminar disponible;
+% 8. contribuciones esperadas;
+% 9. límites del alcance y extensiones opcionales.
+
+
+% ============================================================
+% REFERENCIAS
+% ============================================================
+
+\bibliographystyle{plain}
+\bibliography{referencias}
+
+\end{document}
