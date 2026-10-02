@@ -125,18 +125,73 @@
 % Son herramientas candidatas para estimar validez runtime.
 
 
-% Intro para enganche
+% GUION DE REDACCION: sigue los pasos en orden. Cada paso orienta un
+% párrafo, salvo donde se indica otra extensión. Los comentarios con %
+% son notas de trabajo de LaTeX y no aparecen en el PDF.
+% Mantén el recorrido: situación concreta -> dificultad física -> límites
+% del modelo -> validez de lo aprendido -> problema y pregunta doctoral.
+%
+% PASO 1. Habla aquí de una situación breve que motive el problema.
+% Usa la historia de Mario como ejemplo ilustrativo, no como caso
+% documentado si no tienes una fuente. Al revisarla, concentra la atención
+% en el cambio de condiciones de conducción y la dificultad de controlar
+% el vehículo; reduce los detalles narrativos que no ayudan a ese vínculo.
 Numa tarde de verão, havia um sujeito chamado Mario dirigindo de São Paulo com destino a Minas Gerais. Nosso amigo estava na Rodovia Anhanguera (SP-330). O clima estava maravilhoso naquela hora da tarde e o sol tornava a viagem realmente agradável. Nosso amigo Mario dirigia a 100 km/h, distraído, pensando nas tarefas pendentes que o aguardavam em Minas, quando, de repente, uma cortina de chuva o envolveu. Ao perder totalmente a visibilidade da pista, Mario se assustou e tentou encostar na beira da estrada. Nesse momento, ele percebe que perdeu totalmente o controle do veículo e que agora está à mercê dos outros veículos na via (que também não têm visibilidade), de bater contra os muros de contenção ou de capotar em um grave acidente.\\
 
+% PASO 2. Conecta aquí el ejemplo con la motivación científica.
+% Distingue la pérdida de visibilidad del posible cambio de adherencia:
+% la tesis se concentra en la dinámica y el control, no en la percepción.
+% No atribuyas el accidente a una causa física que el relato no demuestra.
+% Si mantienes afirmaciones sobre frecuencia de accidentes, apóyalas con
+% una fuente; también puedes cerrar el ejemplo sin recurrir a estadísticas.
 Histórias como essas são contadas diariamente por motoristas em todo o mundo e podem ter um final feliz (o motorista consegue recuperar o controle do carro ou não há danos graves) ou aumentar as estatísticas de acidentes automobilísticos.\\
 
-% Breve historia del control automotivo
+% PASO 3. Habla aquí de un antecedente del control automotivo y de su
+% propósito: ayudar a regular el movimiento del vehículo. Dedica como
+% máximo UN párrafo breve a la historia, con uno o dos hitos pertinentes
+% para frenado/estabilidad (por ejemplo, ABS y ESC, si los documentas).
+% No necesitas identificar el "primer control" de toda la industria:
+% si usas esa expresión, delimita el sistema y verifica fecha y fuente.
+% Revisa también el alcance temporal de la frase ya escrita.
+% Cierra el párrafo enlazando esos avances con la necesidad de responder
+% a condiciones variables de conducción. No hagas una cronología ni
+% describas el funcionamiento de cada sistema: los fundamentos van en
+% el capítulo 3 y la revisión comparativa de trabajos en el capítulo 5.
 O controle automotivo tem sido objeto de estudo em inúmeros trabalhos desde meados do século XX.
 
 
 
 \section{Contexto y motivación}
 
+% PASO 4. Habla aquí de los cambios de fricción neumático--carretera
+% como ejemplo principal de condición variable. Explica cualitativamente
+% por qué interesan al frenado, al seguimiento de trayectoria y a la
+% estabilidad. Recupera el ejemplo inicial sin volver a narrarlo.
+% Cita uno o dos trabajos que estudien cambios/estimación de adherencia
+% y su efecto sobre el control: di qué observan y por qué importa aquí.
+% Selecciona las referencias de la revisión; no añadas nombres sin
+% comprobar que respaldan esa afirmación. Las ecuaciones de neumáticos
+% y el papel formal de mu van en el capítulo 3; la comparación de autores,
+% en el 5; los valores y escenarios que probarás, en el 7.
+%
+% PASO 5. Explica aquí por qué el controlador necesita una representación
+% de la dinámica y por qué un modelo físico simplificado puede presentar
+% discrepancias al variar las condiciones. Introduce MPC/NMPC en una frase
+% como control que utiliza predicciones. Evita sugerir que todo control
+% automotivo usa MPC o modelos aprendidos. Deja su formulación al capítulo 3.
+%
+% PASO 6. Habla aquí de los modelos híbridos como una vía para corregir
+% parte de esas discrepancias con datos. Explica en palabras que el residual
+% aprendido complementa al modelo físico y cita trabajos representativos.
+% No hagas un catálogo de redes o algoritmos: la revisión va en el
+% capítulo 5 y el diseño concreto de tu modelo en los capítulos 6 y 7.
+%
+% PASO 7. Cierra la motivación con la dificultad que introduce esa ayuda:
+% lo aprendido bajo ciertas condiciones puede perder utilidad cuando estas
+% cambian. Usa un ejemplo conceptual de entrenamiento y operación con
+% distinta adherencia, sin fijar aún el experimento. Esta transición debe
+% llevar al problema de decidir cuándo seguir confiando en el residual.
+%
 % Desarrollar desde el problema físico/controlístico:
 %
 % - la dinámica vehicular depende de condiciones operativas y de
@@ -153,6 +208,19 @@ O controle automotivo tem sido objeto de estudo em inúmeros trabalhos desde mea
 
 \section{Problema científico}
 
+% PASO 8. Formula aquí el problema en un párrafo directo: el controlador
+% puede seguir usando el residual aunque su validez haya disminuido, y
+% esa discrepancia puede perjudicar las decisiones y el desempeño en lazo
+% cerrado. No repitas el recorrido histórico ni toda la motivación.
+%
+% PASO 9. Explica aquí, en otro párrafo breve, qué necesitas conocer durante
+% la operación: si la información aprendida sigue siendo útil para control
+% y cómo actuar cuando deja de serlo. Menciona incertidumbre, calibración
+% y detección fuera de distribución (OOD) como herramientas candidatas;
+% no las equipares automáticamente con validez ni presupongas que combinarlas
+% funcionará mejor. Las definiciones y distinciones formales van en el
+% capítulo 4; la señal de validez y su integración, en el capítulo 6.
+%
 % Formular el problema central aproximadamente como:
 %
 % Un modelo híbrido de dinámica vehicular puede ofrecer mejores
@@ -173,6 +241,17 @@ O controle automotivo tem sido objeto de estudo em inúmeros trabalhos desde mea
 
 \section{Delimitación del problema (Prioridad 1)}
 
+% PASO 10. Di aquí qué parte concreta del problema aborda la tesis:
+% dinámica vehicular, modelo físico con residual aprendido y uso de la
+% estimación de validez por un MPC/NMPC. Señala como focos los cambios de
+% fricción y la operación fuera del rango de velocidad de entrenamiento.
+% Resume el alcance en uno o dos párrafos; los objetivos enumerados van
+% en el capítulo 2 y el protocolo de evaluación en el capítulo 7.
+% Aclara brevemente los límites ya indicados debajo, especialmente que
+% la visibilidad del relato no convierte la percepción en objeto de estudio.
+% Presenta CBF y reentrenamiento solo como extensiones opcionales, sin
+% desarrollarlos aquí. No prometas seguridad o estabilidad formal.
+%
 % Dominio principal:
 % - dinámica vehicular;
 % - modelo híbrido physics + learned residual;
@@ -194,6 +273,14 @@ O controle automotivo tem sido objeto de estudo em inúmeros trabalhos desde mea
 
 \section{Brecha de investigación}
 
+% PASO 11. Redacta aquí una síntesis breve de la revisión del capítulo 5:
+% qué resuelven los trabajos más cercanos, bajo qué condiciones y qué
+% limitación concreta motiva esta investigación. Cita las referencias que
+% sostengan cada límite; evita una lista de autores o una tabla comparativa.
+% Hasta terminar esa revisión, conserva la brecha como provisional.
+% El párrafo debe conectar validez del residual, reacción del controlador
+% y efecto en lazo cerrado; combinar herramientas no basta como brecha.
+%
 % Esta sección se redactará después de cerrar la revisión bibliográfica.
 %
 % Regla de seguridad:
@@ -222,6 +309,10 @@ O controle automotivo tem sido objeto de estudo em inúmeros trabalhos desde mea
 
 \section{Pregunta de investigación}
 
+% PASO 12. Presenta aquí la pregunta central que se desprende de la brecha.
+% Usa la formulación existente como eje y comprueba que coincida con el
+% alcance anterior. No la respondas todavía ni anticipes resultados.
+%
 \begin{quote}
 \textbf{¿Cómo estimar en tiempo de ejecución la validez de un modelo
 residual aprendido de dinámica vehicular y utilizar esa estimación para
@@ -234,6 +325,14 @@ representadas durante el entrenamiento?}
 
 \section{Preguntas específicas de investigación}
 
+% PASO 13. Usa las preguntas siguientes para descomponer la pregunta
+% central: condiciones que degradan el residual -> información para estimar
+% validez -> reacción del control -> comparación en lazo cerrado.
+% Revisa su coherencia sin convertirlas en tareas de implementación ni
+% repetir los objetivos del capítulo 2. Mantén explícitamente opcional la
+% última pregunta. La construcción de C_k y la regla de adaptación del
+% horizonte se desarrollan en el capítulo 6 y se evalúan en el 7.
+%
 \begin{enumerate}[label=\textbf{P\arabic*:}]
     \item ¿Qué tipos de shifts físicamente relevantes en dinámica
     vehicular producen pérdida significativa de validez del residual
@@ -267,6 +366,14 @@ representadas durante el entrenamiento?}
 
 \section{Hipótesis de investigación}
 
+% PASO 14. Presenta aquí la respuesta tentativa que pondrás a prueba.
+% La hipótesis existente debe expresar la relación esperada entre estimar
+% validez, adaptar el control y reducir la degradación; no una mejora ya
+% demostrada. No fijes aquí si el horizonte debe aumentar o disminuir,
+% ni detalles del ensemble, umbrales, métricas o escenarios experimentales.
+% La metodología va en el capítulo 7, la evidencia disponible en el 8
+% y las contribuciones esperadas en el 9.
+%
 \begin{quote}
 \textbf{La combinación calibrada de incertidumbre epistémica,
 incertidumbre aleatoria y evidencia de distribución fuera del dominio
@@ -282,6 +389,16 @@ validity awareness.}
 % Si la revisión muestra que conviene mantener uncertainty y OOD como
 % señales separadas, reformular la parte de ``combinación'' sin alterar
 % el problema científico central.
+
+% PASO 15. Cierra la introducción con un párrafo breve que oriente la
+% lectura del documento: objetivos (cap. 2), fundamentos y validez
+% (caps. 3--4), estado del arte (cap. 5), propuesta y metodología
+% (caps. 6--7), resultados preliminares y contribuciones esperadas
+% (caps. 8--9), plan de trabajo, limitaciones y cierre (caps. 10--12).
+% Basta indicar la función de esos bloques; no resumas su contenido.
+% Revisión final: cada párrafo debe acercar al lector al problema central.
+% La historia ocupa solo el paso 3; el resto explica por qué vale la pena
+% estudiar la validez de información aprendida para control vehicular.
 
 
 % ============================================================
