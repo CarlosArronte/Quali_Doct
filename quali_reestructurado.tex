@@ -136,7 +136,7 @@
 % documentado si no tienes una fuente. Al revisarla, concentra la atención
 % en el cambio de condiciones de conducción y la dificultad de controlar
 % el vehículo; reduce los detalles narrativos que no ayudan a ese vínculo.
-Em uma tarde de verão, um motorista trafegava pela Rodovia Anhanguera (SP-330), partindo de São Paulo com destino a Minas Gerais. As condições meteorológicas eram favoráveis, e o veículo seguia a 100 km/h quando uma chuva intensa reduziu a visibilidade da pista. Surpreendido pela mudança nas condições de condução, o motorista tentou deslocar o veículo até o acostamento. Entretanto, a redução da aderência entre os pneus e o pavimento comprometeu sua capacidade de controlar a trajetória, expondo-o ao risco de colisão com outros veículos ou com as barreiras de contenção, além da possibilidade de capotamento. 
+Para ilustrar o problema, considere um motorista que trafega por uma rodovia a 100 km/h quando começa a chover. Com a redução da visibilidade, ele decide se dirigir ao acostamento. Durante a manobra, porém, a presença de água na pista pode reduzir a aderência entre os pneus e o pavimento, dificultando a mudança de trajetória. O que começou como uma tentativa de interromper a viagem pode, nessas condições, resultar em perda de controle e risco de colisão com outros veículos ou com as barreiras de contenção.
 
 % PASO 2. Conecta aquí el ejemplo con la motivación científica.
 % Distingue la pérdida de visibilidad del posible cambio de adherencia:
@@ -145,9 +145,11 @@ Em uma tarde de verão, um motorista trafegava pela Rodovia Anhanguera (SP-330),
 % Si mantienes afirmaciones sobre frecuencia de accidentes, apóyalas con
 % una fuente; también puedes cerrar el ejemplo sin recurrir a estadísticas.
 
-Histórias como essas são contadas diariamente por motoristas em todo o mundo e podem ter um final feliz (o motorista consegue recuperar o controle do carro ou não há danos graves) ou aumentar as estatísticas de acidentes automobilísticos.
+O exemplo chama a atenção para uma dificuldade que vai além da decisão do motorista: a possibilidade de executar uma manobra depende das condições de contato entre os pneus e o pavimento. Quando essas condições mudam, as forças disponíveis para frear ou alterar a direção do veículo também podem mudar. Compreender como a aderência varia ao longo do percurso é, portanto, parte do problema de manter o veículo na trajetória pretendida.
 
-De forma geral, os elementos mais prejudiciais para as alterações e a degradação da fricção no asfalto incluem o polimento dos agregados e do ligante impulsionado pelo tráfego contínuo \cite{Weng2026Leveraging,Isasa2025ASkid}, a presença de água na pista associada ao fenômeno de hidroplanagem e a formação de acanalamento (rutting)\cite{Salleh2019Performance}. O tráfego intenso, especialmente de veículos pesados, desgasta progressivamente a microtextura e poli a superfície dos agregados, o que reduz a capacidade de aderência e se reflete no aumento da refletância do pavimento \cite{wilson2006skidAnAnalysis}. Paralelamente, o acanalamento gera deformações longitudinais permanentes que retêm água na trajetória das rodas, o que compromete o contato consistente entre o pneu e o asfalto durante condições chuvosas \cite{Rajendra2013Development}. Sob o ponto de vista morfológico, uma textura com picos excessivamente agudos (representada por um alto valor de kurtosis, ($S_{ku}$)) atua de maneira prejudicial, pois esses picos pontuais sofrem rápido desgaste e polimento sob a carga dos veículos, reduzindo a área de contato e a textura efetiva \cite{Weng2026Leveraging}. Por fim, fatores térmicos e sazonais — como as elevadas temperaturas no verão que afetam a resposta do pneu e a presença da película inicial de betume cobrindo os agregados em pavimentos novos — também provocam quedas na resistência ao deslizamento disponível \cite{Perez2019Skid}.
+Entre os fatores que alteram a aderência estão o desgaste do pavimento e a presença de água na pista. Ao longo do tempo, a passagem dos veículos provoca o polimento dos agregados e modifica a textura da superfície, reduzindo sua resistência ao deslizamento \cite{Weng2026Leveraging,Isasa2025ASkid,wilson2006skidAnAnalysis}. Durante a chuva, a água pode comprometer o contato entre os pneus e o pavimento e, em condições de hidroplanagem, levar à perda desse contato \cite{Salleh2019Performance}. Os sulcos formados nas trilhas de roda favorecem o acúmulo de água, contribuindo para o problema \cite{Rajendra2013Development}. Assim, tanto o desgaste da via quanto as condições encontradas durante a viagem podem modificar a aderência disponível para uma manobra.
+
+Essa limitação ganha relevância quando o motorista precisa mudar de faixa em pouco tempo ou desviar de um obstáculo. Nessas manobras, as forças laterais necessárias para seguir a trajetória pretendida podem superar aquelas que os pneus conseguem transmitir ao pavimento \cite{Bertipaglia2024Model}. A combinação de alta velocidade e baixa aderência pode, então, provocar deslizamento lateral e instabilidade de guinada, levando à perda de controle do veículo \cite{Hu2025Lanechanging}. A dificuldade está, portanto, em executar a manobra dentro dos limites impostos pela interação entre os pneus e a pista.
 
 % PASO 3. Habla aquí de un antecedente del control automotivo y de su
 % propósito: ayudar a regular el movimiento del vehículo. Dedica como
@@ -160,7 +162,7 @@ De forma geral, os elementos mais prejudiciais para as alterações e a degrada�
 % a condiciones variables de conducción. No hagas una cronología ni
 % describas el funcionamiento de cada sistema: los fundamentos van en
 % el capítulo 3 y la revisión comparativa de trabajos en el capítulo 5.
-O controle automotivo tem sido objeto de estudo em inúmeros trabalhos desde meados do século XX.
+É nesse contexto que se insere o controle automotivo, com sistemas destinados a auxiliar o motorista na frenagem e na manutenção da estabilidade do veículo.
 
 
 
