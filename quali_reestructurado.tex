@@ -79,6 +79,8 @@
 %    - la validez puede degradarse cuando el vehículo opera en
 %      regímenes físicos, regiones de estado o condiciones de entrada
 %      no representadas durante el entrenamiento;
+%    - incluir variaciones de masa/carga y parámetros de neumáticos,
+%      además de fricción; distinguir cambio físico e incertidumbre paramétrica;
 %    - el controlador puede continuar utilizando información aprendida
 %      aun cuando esta pierda confiabilidad.
 %
@@ -91,7 +93,8 @@
 %    - uso de C_k para adaptar un MPC/NMPC.
 %
 % 4. Evaluación:
-%    - shifts vehiculares físicamente interpretables;
+%    - shifts vehiculares físicamente interpretables: fricción, masa/carga,
+%      rigidez lateral de neumáticos y rango de operación;
 %    - comparación con baselines sin validity awareness, validity-only
 %      y OOD-only;
 %    - métricas de modelo, validity/OOD y, principalmente, closed-loop.
@@ -115,14 +118,22 @@
 
 % La introducción debe construir UNA única cadena causal:
 %
-% cambio de condición operativa
-% -> cambio de validez de la información aprendida
+% cambio de condición operativa o parámetro de la dinámica vehicular
+% -> posible cambio de validez de la información aprendida
 % -> posible degradación del control
 % -> estimación runtime de validez
 % -> reacción del controlador.
 %
 % No presentar OOD + uncertainty como el ``gap'' en sí mismo.
 % Son herramientas candidatas para estimar validez runtime.
+% Criterio transversal de alcance: la fricción ilustra el problema, no lo
+% define por sí sola. Incluir masa/carga y rigidez lateral de neumáticos
+% (cornering stiffness), además de cambios del rango de operación.
+% Distinguir cambio físico, valor desconocido y error de estimación.
+% No asumir que todo cambio es OOD ni que todo OOD invalida el residual.
+% El objetivo es estimar validez para control, no identificar necesariamente
+% cada parámetro físico. Evitar presentar parámetros difíciles de medir
+% directamente como imposibles de estimar.
 
 
 % GUION DE REDACCION: sigue los pasos en orden. Cada paso orienta un
@@ -136,7 +147,7 @@
 % documentado si no tienes una fuente. Al revisarla, concentra la atención
 % en el cambio de condiciones de conducción y la dificultad de controlar
 % el vehículo; reduce los detalles narrativos que no ayudan a ese vínculo.
-To illustrate the problem, consider a driver traveling along a highway at 100 km/h when it starts to rain. As visibility decreases, the driver decides to pull over onto the shoulder. During the maneuver, however, water on the road may reduce tire--road grip, making it harder to change course. What began as an attempt to stop the journey can, under these conditions, lead to a loss of control and a risk of collision with other vehicles or roadside barriers.
+Consider a driver traveling along a highway at 100 km/h when it starts to rain. As visibility decreases, the driver decides to pull over onto the shoulder. During the maneuver, however, water on the road may reduce tire--road grip, making it harder to change course. What began as an attempt to stop the journey can, under these conditions, lead to a loss of control and a risk of collision with other vehicles or roadside barriers.
 
 % PASO 2. Conecta aquí el ejemplo con la motivación científica.
 % Distingue la pérdida de visibilidad del posible cambio de adherencia:
@@ -144,12 +155,14 @@ To illustrate the problem, consider a driver traveling along a highway at 100 km
 % No atribuyas el accidente a una causa física que el relato no demuestra.
 % Si mantienes afirmaciones sobre frecuencia de accidentes, apóyalas con
 % una fuente; también puedes cerrar el ejemplo sin recurrir a estadísticas.
+% Explicitar que el relato introduce un caso de variación dinámica;
+% no convertir el estado del pavimento en el objeto central de la tesis.
 
 This example highlights a difficulty that extends beyond the driver's decision: the ability to execute a maneuver depends on the contact conditions between the tires and the road. When these conditions change, the forces available for braking or changing direction may also change. Understanding how grip varies along the route is therefore part of the problem of keeping the vehicle on its intended path.
 
 Pavement wear and water on the road are among the factors that affect grip. Over time, traffic polishes the aggregates and changes the surface texture, reducing skid resistance \cite{Weng2026Leveraging,Isasa2025ASkid,wilson2006skidAnAnalysis}. During rainfall, water can impair tire--road contact and, under hydroplaning conditions, cause that contact to be lost \cite{Salleh2019Performance}. Ruts in the wheel paths allow water to accumulate, contributing to the problem \cite{Rajendra2013Development}. Both pavement wear and the conditions encountered during a journey can therefore alter the grip available for a maneuver.
 
-This limitation becomes relevant when a driver needs to change lanes at short notice or swerve to avoid an obstacle. In these maneuvers, the lateral forces required to follow the intended path may exceed those that the tires can transmit to the road \cite{Bertipaglia2024Model}. The combination of high speed and low grip can then cause lateral sliding and yaw instability, leading to a loss of vehicle control \cite{Hu2025Lanechanging}. The challenge is therefore to execute the maneuver within the limits imposed by tire--road interaction.
+This limitation becomes relevant when a driver needs to change lanes at short notice or swerve to avoid an obstacle. In these maneuvers, the lateral forces required to follow the intended path may exceed those that the tires can transmit to the road \cite{Bertipaglia2024Model}. The combination of high speed and low grip can then cause lateral sliding and yaw instability, leading to a loss of vehicle control \cite{Hu2025Lanechanging}. The challenge is therefore to execute the maneuver within the limits imposed by tire--road interaction. Road conditions are one source of variation; changes in vehicle loading and tire properties can also alter the response to braking and steering inputs.
 
 % PASO 3. Habla aquí de un antecedente del control automotivo y de su
 % propósito: ayudar a regular el movimiento del vehículo. Dedica como
@@ -162,28 +175,54 @@ This limitation becomes relevant when a driver needs to change lanes at short no
 % a condiciones variables de conducción. No hagas una cronología ni
 % describas el funcionamiento de cada sistema: los fundamentos van en
 % el capítulo 3 y la revisión comparativa de trabajos en el capítulo 5.
-Vehicle control systems address this challenge by assisting the driver with braking and maintaining vehicle stability. The anti-lock braking system (ABS) and electronic stability control (ESC) illustrate this development: the former aims to prevent wheel lock during braking, while the latter helps correct deviations between vehicle motion and the driver's intended direction. The introduction of ESP, an implementation of electronic stability control launched by Bosch in 1995, extended this assistance to situations involving a loss of stability \cite{Bosch2025ESP}. Development continues through the integration of braking, steering, and propulsion, whose coordinated operation draws on the capabilities of each system to regulate vehicle motion \cite{Skrickij2024Review}. For this assistance to respond to the situations encountered while driving, it remains necessary to account for how changes in grip affect the vehicle's ability to follow a path \cite{Hu2025Lanechanging}.
+Vehicle control systems address this challenge by assisting the driver with braking and maintaining vehicle stability. The anti-lock braking system (ABS) and electronic stability control (ESC) illustrate this development: the former aims to prevent wheel lock during braking, while the latter helps correct deviations between vehicle motion and the driver's intended direction. The introduction of ESP, an implementation of electronic stability control launched by Bosch in 1995, extended this assistance to situations involving a loss of stability \cite{Bosch2025ESP}. Development continues through the integration of braking, steering, and propulsion \cite{Skrickij2024Review}.
+
+Coordinating these systems expands the controller's ability to influence vehicle motion. Their effectiveness, however, depends on accounting for variations in both operating conditions and vehicle parameters, including quantities that are not directly measured during operation.
 
 
 
 \section{Context and motivation}
 
-% PASO 4. Habla aquí de los cambios de fricción neumático--carretera
-% como ejemplo principal de condición variable. Explica cualitativamente
+% PASO 4. Presenta cambios de condiciones y parámetros de la dinámica:
+% fricción neumático--carretera, masa/carga y rigidez lateral de neumáticos.
+% La fricción es un ejemplo ilustrativo, no el eje exclusivo de la tesis.
+% Distingue parámetros variables de parámetros difíciles de medir directamente.
+% Explica cualitativamente
 % por qué interesan al frenado, al seguimiento de trayectoria y a la
 % estabilidad. Recupera el ejemplo inicial sin volver a narrarlo.
-% Cita uno o dos trabajos que estudien cambios/estimación de adherencia
-% y su efecto sobre el control: di qué observan y por qué importa aquí.
+% Selecciona trabajos que estudien cambios de fricción, masa/carga o
+% parámetros de neumáticos y su efecto sobre el control. No atribuyas
+% resultados sobre un parámetro a estudios que solo evalúan otro.
+% Di qué observan y por qué importa aquí, sin hacer un catálogo de autores.
 % Selecciona las referencias de la revisión; no añadas nombres sin
 % comprobar que respaldan esa afirmación. Las ecuaciones de neumáticos
-% y el papel formal de mu van en el capítulo 3; la comparación de autores,
+% y el papel de masa, rigidez lateral y mu van en el capítulo 3;
+% la comparación de autores,
 % en el 5; los valores y escenarios que probarás, en el 7.
+
+The opening example illustrates how road conditions can alter the vehicle's response, but similar concerns arise when the vehicle itself changes. Carrying passengers or cargo changes its mass and loading, while tire properties influence its response to steering. These variations matter for different aspects of motion: friction and axle loads affect braking-distance prediction \cite{Yun2026RealTime}, whereas mass and tire cornering stiffness enter the description of lateral and yaw dynamics \cite{Yeneneh2026Adaptive}. Cornering stiffness describes the relationship between lateral tire force and slip angle within the linear range; it serves a different role from the friction limit that bounds the available tire forces. Accounting for these quantities therefore involves both the forces the vehicle can generate and the motion that results from them.
+
+Studies of adaptive vehicle control provide examples of how these variations affect tracking performance. Xu et al.\ \cite{Xu2026Parallel} evaluate trajectory tracking in simulations on roads with low and changing friction. In the scenarios considered, their adaptive strategy reduces lateral and heading errors relative to the comparison controllers when grip changes along the path. Yeneneh et al.\ \cite{Yeneneh2026Adaptive} investigate lateral tracking under variations in vehicle mass, speed, and friction, using online parameter estimation to update the controller's prediction model. Their simulations report lower tracking errors than conventional MPC and LQR controllers under the conditions evaluated. Their formulation also includes the estimation of cornering stiffness, illustrating how parameters that are not directly measured can be inferred from the vehicle's response.
+
+For this thesis, these examples motivate the study of changes in operating conditions and vehicle parameters, including friction, mass and loading, and tire cornering stiffness. A parameter may be uncertain even when it remains constant, and a physical change may occur between journeys or during one. The controller must work with the measurements, estimates, and nominal values available to it. This raises the question of how well its model continues to describe the vehicle as those conditions and parameters vary, providing the starting point for examining model mismatch and its consequences for control.
+
+
+
 %
 % PASO 5. Explica aquí por qué el controlador necesita una representación
 % de la dinámica y por qué un modelo físico simplificado puede presentar
 % discrepancias al variar las condiciones. Introduce MPC/NMPC en una frase
 % como control que utiliza predicciones. Evita sugerir que todo control
 % automotivo usa MPC o modelos aprendidos. Deja su formulación al capítulo 3.
+% Relaciona las discrepancias con masa/carga, rigidez lateral y fricción,
+% distinguiendo valores nominales, variaciones reales y valores estimados.
+
+Controllers that predict vehicle motion use a model to relate their commands to the response they expect. Model predictive control (MPC), including its nonlinear formulation (NMPC), uses these predictions to choose control inputs over a finite horizon while accounting for constraints \cite{Su2026ReinforcementLearningBased}. The model must describe the dynamics in enough detail to support those decisions while allowing the control problem to be solved within the available computation time. Chen et al.\ \cite{Chen2026Hybrid}, for example, use a simplified bicycle model to balance prediction accuracy and computational cost. Pan et al.\ \cite{Pan2026A} identify model structure and parameter errors as sources of discrepancy between a control-oriented model and the vehicle. These discrepancies, referred to as model mismatch, can affect predictions and control performance even when the optimization problem is solved as intended.
+
+Parameter uncertainty adds to the mismatch introduced by model simplification. Yeneneh and Sufe\ \cite{Yeneneh2026AutoDyn} consider uncertainty in vehicle mass, front and rear tire cornering stiffness, and road friction within a robust predictive-control formulation. Li et al.\ \cite{Li2026TrajectoryTracking} address uncertainty in cornering stiffness and yaw moment of inertia in a controller that includes longitudinal and lateral coupling, evaluated through hardware-in-the-loop tests. These studies illustrate why the issue extends beyond changes in grip: the vehicle's response also depends on parameters that may differ from the values used in its model. Structural approximations and parameter uncertainty can therefore contribute to prediction error through different mechanisms.
+
+It is useful here to distinguish the physical parameters of the vehicle, the nominal values chosen for its model, and any estimates obtained from measurements during operation. An estimate provides information about the vehicle, but may still differ from the physical value; calibrating parameters also leaves discrepancies associated with the model's structure. The formulation of Chen et al.\ \cite{Chen2026DataMechanism} reflects this distinction by combining calibration of a nominal physical model with compensation for remaining unmodeled dynamics. For this thesis, the question is how those discrepancies affect the information used by the controller and how to improve its predictions without losing the computational advantages of a simplified model.
+
 %
 % PASO 6. Habla aquí de los modelos híbridos como una vía para corregir
 % parte de esas discrepancias con datos. Explica en palabras que el residual
@@ -194,13 +233,16 @@ Vehicle control systems address this challenge by assisting the driver with brak
 % PASO 7. Cierra la motivación con la dificultad que introduce esa ayuda:
 % lo aprendido bajo ciertas condiciones puede perder utilidad cuando estas
 % cambian. Usa un ejemplo conceptual de entrenamiento y operación con
-% distinta adherencia, sin fijar aún el experimento. Esta transición debe
-% llevar al problema de decidir cuándo seguir confiando en el residual.
+% distinta masa/carga o rigidez lateral para ampliar el caso de lluvia,
+% sin fijar aún el experimento. El cambio puede ocurrir entre recorridos
+% o durante uno; no presupongas cambios abruptos de todos los parámetros.
+% Esta transición debe llevar al problema de decidir cuándo seguir
+% confiando en el residual, no a exigir identificar la causa del cambio.
 %
 % Desarrollar desde el problema físico/controlístico:
 %
 % - la dinámica vehicular depende de condiciones operativas y de
-%   parámetros que pueden variar durante la conducción;
+%   parámetros que pueden variar entre recorridos o durante la conducción;
 % - modelos físicos control-oriented son útiles pero presentan
 %   discrepancias frente a la planta real;
 % - modelos híbridos physics + learning permiten aprender parte
@@ -231,7 +273,7 @@ Vehicle control systems address this challenge by assisting the driver with brak
 % Un modelo híbrido de dinámica vehicular puede ofrecer mejores
 % predicciones que un modelo físico nominal dentro del dominio
 % representado por los datos. Sin embargo, cuando cambian las
-% condiciones de operación, el residual aprendido puede dejar de
+% condiciones de operación o parámetros físicos, el residual aprendido puede dejar de
 % representar correctamente el model mismatch. El problema no es
 % únicamente detectar una muestra OOD, sino estimar si la información
 % aprendida continúa siendo suficientemente válida para que un
@@ -248,8 +290,12 @@ Vehicle control systems address this challenge by assisting the driver with brak
 
 % PASO 10. Di aquí qué parte concreta del problema aborda la tesis:
 % dinámica vehicular, modelo físico con residual aprendido y uso de la
-% estimación de validez por un MPC/NMPC. Señala como focos los cambios de
-% fricción y la operación fuera del rango de velocidad de entrenamiento.
+% estimación de validez por un MPC/NMPC. Incluye como familias de estudio
+% fricción, masa/carga, rigidez lateral de los neumáticos y operación fuera
+% del rango de entrenamiento. La fricción no tiene prioridad por defecto.
+% Distingue parámetros medidos, estimados y no disponibles para el control.
+% Selecciona escenarios representativos de cada familia en la metodología;
+% no prometas cubrir todas sus combinaciones ni estimar todos los parámetros.
 % Resume el alcance en uno o dos párrafos; los objetivos enumerados van
 % en el capítulo 2 y el protocolo de evaluación en el capítulo 7.
 % Aclara brevemente los límites ya indicados debajo, especialmente que
@@ -326,6 +372,9 @@ under operating conditions not represented during training?}
 
 % Esta versión incorpora las decisiones D1--D7 sin comprometer todavía
 % una técnica concreta de fusión ni una garantía formal de estabilidad.
+% Interpretar las condiciones de operación de la pregunta como condiciones
+% externas, parámetros del vehículo y rangos de estado/entrada. Comprobar
+% que la redacción final no limite el problema a cambios de superficie.
 
 \section{Specific research questions}
 
@@ -419,6 +468,11 @@ not represented during training.
 
 \section{Specific objectives}
 
+% Al revisar los objetivos, representar fricción, masa/carga y rigidez
+% lateral dentro de los cambios físicos estudiados, y distinguirlos de
+% la extrapolación de estados/entradas. No hacer de la identificación
+% paramétrica un objetivo obligatorio de la estimación de validez.
+
 \begin{enumerate}[label=\textbf{SO\arabic*:}]
     \item Formulate a hybrid vehicle dynamics architecture comprising a
     control-oriented physical model and a learned residual.
@@ -473,7 +527,9 @@ not represented during training.
 % - entradas de control;
 % - dinámica longitudinal/lateral/yaw según el modelo elegido;
 % - interacción neumático--carretera;
-% - papel de \mu y del régimen de operación;
+% - papel de masa/carga, rigidez lateral, \mu y régimen de operación;
+% - diferencia entre capacidad de adherencia y rigidez lateral del neumático;
+% - parámetros reales, nominales y estimados, y su disponibilidad runtime;
 % - regiones cercanas a saturación/handling limits si se estudian.
 %
 % Conectar siempre con el problema de cambio de régimen y model mismatch.
@@ -486,6 +542,9 @@ not represented during training.
 % - efecto de parámetros desconocidos/variables;
 % - por qué un residual aprendido puede ser útil;
 % - por qué ese residual puede perder validez fuera del dominio de datos.
+% Separar el efecto de parámetros desconocidos del de variaciones respecto
+% al entrenamiento. Un valor desconocido pero representado en los datos
+% no constituye por sí solo un shift ni una pérdida de validez.
 
 \section{Hybrid models: physics and learned residuals}
 
@@ -501,6 +560,9 @@ not represented during training.
 % - horizonte de uso;
 % - frecuencia de actualización;
 % - hipótesis del modelo físico.
+% Explicitar qué parámetros se mantienen nominales, cuáles se actualizan
+% y cuáles no se observan. Separar verdad de referencia del simulador e
+% información disponible para el modelo y el controlador.
 %
 % No convertir esta sección en una comparación exhaustiva de algoritmos ML.
 
@@ -575,14 +637,19 @@ not represented during training.
 \subsection{Unrepresented physical regime}
 
 % Caso principal: cambios de parámetros/condiciones físicas no presentes
-% durante entrenamiento. Ejemplo prioritario: variaciones desconocidas
-% de coeficiente de fricción \mu.
+% durante entrenamiento: variaciones de fricción, masa/carga o rigidez
+% lateral. Definir para cada caso el dominio de entrenamiento y la
+% información disponible; no equiparar parámetro desconocido con OOD.
 
 \subsection{Dynamics OOD}
 
 % Regiones de estado/dinámica nunca vistas o insuficientemente cubiertas
 % durante entrenamiento. Ejemplo de escenario: V_x > V_{x,\max}^{train}
 % o regiones dinámicas no representadas.
+% Aclarar el posible solapamiento con cambios físicos: un cambio de masa
+% o neumáticos puede alterar la dinámica aun con estados/entradas familiares.
+% Definir categorías y etiquetas experimentales sin asumir que un detector
+% basado solo en entradas identificará todos esos cambios.
 
 \subsection{Input OOD}
 
@@ -618,6 +685,8 @@ S_{\mathrm{OOD},k}
 %
 % La señal debe evaluarse por su relación con error relevante para
 % control, no solo por AUROC de detección.
+% Evaluar si detecta degradación sin conocer el parámetro que la causa;
+% no interpretar C_k como una estimación de fricción, masa o rigidez lateral.
 
 \section{Control-relevant validity}
 
@@ -648,6 +717,10 @@ S_{\mathrm{OOD},k}
 % - tabla maestra de papers cercanos.
 %
 % Mantener separada la evidencia bibliográfica de las decisiones propias.
+% Cubrir fricción, masa/carga y parámetros de neumáticos en las búsquedas;
+% no restringirlas a road adhesion ni a estimación de fricción.
+% Extraer qué parámetros varían, cuáles conoce/estima el controlador y
+% qué rangos se usan para entrenamiento y validación.
 
 \section{Learned and hybrid models for vehicle dynamics control}
 
@@ -659,6 +732,8 @@ S_{\mathrm{OOD},k}
 %
 % Para cada familia responder:
 % ¿qué información produce el modelo y cómo modifica el controlador?
+% Distinguir aprendizaje del residual e identificación de parámetros;
+% registrar cómo se evalúan cambios de masa, neumáticos y superficie.
 
 \section{Uncertainty-aware learned dynamics for control}
 
@@ -701,6 +776,9 @@ S_{\mathrm{OOD},k}
 % Uncertainty | OOD | Definición de validity | Shift | Cómo validity
 % modifica control | Closed-loop property | Guarantee | Validation |
 % Real-time | Limitación | Aporte a la tesis.
+% Detallar Shift por parámetro/condición, información disponible y rango
+% de entrenamiento. Distinguir validación aislada de cambios combinados;
+% no extrapolar resultados de fricción a masa o rigidez sin evidencia.
 %
 % La síntesis debe responder:
 %
@@ -719,7 +797,7 @@ S_{\mathrm{OOD},k}
 
 % Figura conceptual recomendada:
 %
-% operating-condition shift
+% operating-condition or vehicle-parameter shift
 % -> learned residual
 % -> {prediction, U_epi, U_ale, calibration, OOD}
 % -> C_k
@@ -733,6 +811,9 @@ S_{\mathrm{OOD},k}
 % Presentar formalmente la combinación physics + learned residual.
 % La implementación concreta se detallará después, pero aquí debe quedar
 % claro qué información consume el MPC/NMPC.
+% Representar parámetros físicos reales y nominales/estimados por separado.
+% No suministrar a la arquitectura valores de masa, rigidez o fricción
+% que el protocolo declara desconocidos; reservarlos para evaluación/oracle.
 
 \section{Validity estimator}
 
@@ -745,6 +826,8 @@ S_{\mathrm{OOD},k}
 %
 % La función g puede ser heurística, aprendida o basada en calibración,
 % pero la selección debe justificarse por su relación con control error.
+% Estudiar sensibilidad a distintos cambios físicos y sus combinaciones,
+% sin exigir que C_k identifique cuál parámetro cambió.
 
 \section{Integration with MPC/NMPC}
 
@@ -815,18 +898,44 @@ S_{\mathrm{OOD},k}
 
 \section{Distribution shift scenarios}
 
+% D7 actualizado: incluir fricción, masa/carga y rigidez lateral de
+% neumáticos como familias de cambios físicos, además de extrapolación
+% del rango de operación. No reducir la campaña a cambios de fricción.
+% Para cada familia definir: rango de entrenamiento, rango de evaluación,
+% magnitud y evolución temporal del cambio, variables observadas/estimadas
+% y verdad de referencia disponible solo para análisis.
+% Comparar primero cambios aislados; seleccionar después combinaciones
+% físicamente coherentes. No confundir reparto de carga con masa total ni
+% forzar independencia entre parámetros que el modelo acopla.
+% Incluir cambios dentro del dominio como contraste: no todo cambio físico
+% es OOD y no todo OOD produce degradación relevante para control.
+
 \subsection{Unknown change in friction}
 
-% Escenario prioritario D7.
-% Justificar por qué variaciones de \mu representan un cambio de régimen
-% físico con impacto directo sobre dinámica y residual aprendido.
+% Una de las familias de cambios físicos D7.
+% Comparar variaciones de \mu dentro y fuera del dominio de entrenamiento
+% y evaluar su efecto sobre dinámica, residual y control.
+% Indicar si \mu se supone conocida, estimada o no disponible.
+
+% GUION DE SUBSECCIÓN A DESARROLLAR: Vehicle mass and loading variations.
+% Evaluar cambios de masa/carga entre recorridos; justificar cualquier
+% variación durante un recorrido. Precisar si el modelo representa reparto
+% de carga, centro de gravedad e inercia y cómo se mantiene su coherencia.
+% Separar masa real de masa nominal/estimada utilizada por el controlador.
+
+% GUION DE SUBSECCIÓN A DESARROLLAR: Tire cornering stiffness variations.
+% Definir rigidez lateral delantera/trasera según el modelo elegido,
+% rangos de entrenamiento/evaluación y justificación física de variaciones.
+% Tratarla como parámetro difícil de medir directamente, no como magnitud
+% imposible de estimar. Distinguir rigidez lateral y límite de adherencia.
+% Evaluar el residual sin entregar al controlador el valor real oculto.
 
 \subsection{Extension of the speed range}
 
-% Escenario prioritario D7:
+% Familia de extrapolación del rango de operación D7:
 % V_x > V_{x,\max}^{train}.
 % Definir claramente V_{x,max}^{train} y separar extrapolación de estado
-% de cambios físicos de \mu.
+% de cambios físicos de fricción, masa/carga o rigidez lateral.
 
 \subsection{Sensor failure or degradation}
 
@@ -864,6 +973,9 @@ S_{\mathrm{OOD},k}
 % - sensibilidad a shifts;
 % - redundancia/complementariedad de componentes;
 % - latencia/costo.
+% Desglosar resultados por familia y magnitud de cambio. Examinar casos
+% donde el parámetro cambia sin degradar el modelo y donde el error crece
+% sin una señal OOD clara, especialmente con parámetros no observados.
 
 \section{Validity-aware integration with MPC/NMPC}
 
@@ -902,6 +1014,9 @@ S_{\mathrm{OOD},k}
 % Si es posible, incluir una comparación ``oracle'' con conocimiento
 % perfecto del shift/error solamente como upper bound experimental,
 % no como baseline obligatorio de la tesis.
+% Mantener iguales sensores e información paramétrica entre comparaciones.
+% Si una arquitectura estima parámetros, declarar ese acceso y su costo;
+% no introducir verdad de referencia en baselines no definidos como oracle.
 
 \section{Evaluation metrics}
 
@@ -976,6 +1091,10 @@ S_{\mathrm{OOD},k}
 % - reporte de fallos/violaciones, no solo promedios;
 % - criterios de éxito/fallo;
 % - costo computacional y deadline de ejecución.
+% Separar resultados por fricción, masa/carga, rigidez lateral y rango
+% operativo; evitar que un promedio oculte fallos en una familia.
+% Documentar particiones de entrenamiento, calibración y prueba para evitar
+% filtración de escenarios o valores paramétricos reservados a evaluación.
 
 
 % ============================================================
@@ -999,6 +1118,9 @@ S_{\mathrm{OOD},k}
 % Solo si ya existen resultados suficientemente maduros.
 % Presentar casos donde las señales responden o fallan, no solo resultados
 % favorables. Relacionar con D3--D5.
+% Identificar la familia de cambio evaluada y los parámetros conocidos.
+% Si solo hay resultados de fricción, explicitar que aún no sustentan
+% conclusiones sobre masa/carga o rigidez lateral.
 
 \section{Preliminary integration with control}
 
@@ -1042,6 +1164,8 @@ S_{\mathrm{OOD},k}
 % Caracterización sistemática de cómo diferentes shifts vehiculares
 % afectan residual error, uncertainty, calibration, OOD y comportamiento
 % closed-loop.
+% Cubrir las familias de parámetros y condiciones evaluadas; delimitar
+% las conclusiones a esos rangos y evitar generalizar desde un único caso.
 
 \section{Experimental taxonomy of shifts in vehicle dynamics}
 
@@ -1067,7 +1191,7 @@ S_{\mathrm{OOD},k}
 
 \section{Remaining activities}
 
-% Relacionar actividades con OE1--OE8.
+% Relacionar actividades con SO1--SO8.
 %
 % Sugerencia de bloques:
 % A1. cerrar revisión y gap;
@@ -1075,7 +1199,8 @@ S_{\mathrm{OOD},k}
 % A3. consolidar UQ + calibration + OOD;
 % A4. construir C_k;
 % A5. integrar MPC/NMPC adaptive horizon;
-% A6. campaña de shifts y baselines;
+% A6. campaña de fricción, masa/carga, rigidez lateral y rango operativo,
+%     con baselines, cambios aislados y combinaciones seleccionadas;
 % A7. robustez empírica + análisis estadístico;
 % A8. extensiones opcionales;
 % A9. publicaciones;
@@ -1095,6 +1220,8 @@ S_{\mathrm{OOD},k}
 % H3. C_k validada respecto a control-relevant error.
 % H4. MPC/NMPC validity-aware comparado contra B0--B3.
 % H5. campaña final y robustez empírica.
+% H5 debe incluir evidencia de las familias físicas previstas, no solo
+% fricción. Si alguna queda sin evaluar, revisar alcance y conclusiones.
 % H6. decisión go/no-go para extensiones CBF/DAgger/bounds.
 
 
@@ -1135,6 +1262,9 @@ S_{\mathrm{OOD},k}
 % Mitigación:
 % núcleo obligatorio: physics+residual + UQ/calibration/OOD + C + MPC/NMPC
 % + baselines + shifts principales.
+% Mantener fricción, masa/carga y rigidez lateral en el núcleo del estudio;
+% acotar rangos, maniobras y combinaciones para hacer viable la campaña.
+% La identificación de todos los parámetros no es requisito del método.
 % Opcional: CBF, DAgger, input OOD, sensor fault, probabilistic bounds.
 
 \section{Limitations of formal guarantees}
@@ -1157,7 +1287,8 @@ S_{\mathrm{OOD},k}
 % 2. gap sustentado por la revisión;
 % 3. pregunta e hipótesis;
 % 4. arquitectura physics+residual + validity estimator + MPC/NMPC;
-% 5. shifts prioritarios;
+% 5. familias de cambios físicos y operativos estudiadas, distinguiendo
+%    fricción, masa/carga, rigidez lateral y extrapolación de estados;
 % 6. estrategia experimental y baselines;
 % 7. evidencia preliminar disponible;
 % 8. contribuciones esperadas;
