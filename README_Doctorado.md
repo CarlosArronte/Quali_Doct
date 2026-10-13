@@ -3,6 +3,8 @@
 **Estado:** línea de trabajo provisional, agosto de 2026  
 **Propósito:** mantener alineadas las decisiones científicas, la revisión bibliográfica, el documento de qualificação y la futura implementación experimental.
 
+**Idioma de trabajo:** español durante la revisión de contenido y estructura. La tesis se traducirá al inglés al final, cuando el argumento esté consolidado. Los títulos de los trabajos citados se conservan en su idioma original.
+
 ---
 
 ## 1. Estructura recomendada de documentación
