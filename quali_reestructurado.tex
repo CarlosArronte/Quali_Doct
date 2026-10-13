@@ -259,6 +259,12 @@ Other hybrid approaches fuse physical and neural models for dynamic prediction o
 %
 % Evitar una introducción general a IA, vehículos autónomos o
 % Machine Learning que no contribuya directamente al problema.
+The usefulness of a learned correction depends on how well it continues to represent the discrepancy between the physical model and the vehicle during operation \cite{Kabzan2019LearningBased,Chen2026Hybrid}. As a conceptual example, consider a residual trained with a particular vehicle load and later used on a journey with additional passengers or cargo. If the nominal model and residual remain unchanged, the correction learned for the earlier response may no longer describe the discrepancy under the new load. Changes in tire properties can raise a similar difficulty: familiar speeds and steering inputs need not produce the same vehicle response when the underlying parameters differ \cite{Yeneneh2026AutoDyn}.
+
+Such changes need not occur abruptly: loading may differ between journeys, whereas tire characteristics may evolve during driving. Kalaria et al.\ \cite{Kalaria2024Adaptive} learn and update a tire model online to account for changes in lateral slip behavior, evaluating the approach in numerical and high-fidelity simulators. Their study includes simulated changes in tire properties intended to represent wear. More generally, Brunke et al.\ \cite{Brunke2022Safe} identify sparse data and distribution shifts as practical challenges for learning-based control. These considerations do not imply that every change invalidates the learned residual, but they indicate that its usefulness under new conditions cannot be inferred solely from performance under the conditions used for training and evaluation \cite{Chen2026Hybrid}.
+
+For this thesis, the challenge is to assess during operation whether the learned residual remains useful to the controller and how a loss of accuracy affects its decisions. This assessment must relate the correction's validity to its role in predicting vehicle motion, without necessarily identifying the physical cause of the discrepancy. It provides the link between changes in the vehicle's response and the question of how the controller should react when the learned information becomes less reliable.
+
 
 \section{Research problem}
 
