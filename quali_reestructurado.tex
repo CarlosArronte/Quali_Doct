@@ -167,7 +167,7 @@ La adherencia disponible varía con la superficie del pavimento y con las condic
 
 Estos límites cobran relevancia cuando el conductor necesita cambiar de carril con poco margen de reacción o desviarse para evitar un obstáculo. Las fuerzas laterales necesarias para seguir la trayectoria prevista pueden superar las que el contacto entre los neumáticos y la carretera permite transmitir \cite{Bertipaglia2024Model}. A velocidades elevadas y con baja adherencia, esta limitación puede dar lugar a deslizamiento lateral e inestabilidad de guiñada, comprometiendo la maniobra \cite{Hu2025Lanechanging}.
 
-% PASO 3. Habla aquí de un antecedente del control automotivo y de su
+% PASO 3. Habla aquí de un antecedente del control automotriz y de su
 % propósito: ayudar a regular el movimiento del vehículo. Dedica como
 % máximo UN párrafo breve a la historia, con uno o dos hitos pertinentes
 % para frenado/estabilidad (por ejemplo, ABS y ESC, si los documentas).
@@ -212,7 +212,7 @@ Los estudios sobre control vehicular adaptativo ilustran las consecuencias de es
 % de la dinámica y por qué un modelo físico simplificado puede presentar
 % discrepancias al variar las condiciones. Introduce MPC/NMPC en una frase
 % como control que utiliza predicciones. Evita sugerir que todo control
-% automotivo usa MPC o modelos aprendidos. Deja su formulación al capítulo 3.
+% automotriz usa MPC o modelos aprendidos. Deja su formulación al capítulo 3.
 % Relaciona las discrepancias con masa/carga, rigidez lateral y fricción,
 % distinguiendo valores nominales, variaciones reales y valores estimados.
 
@@ -271,7 +271,199 @@ El reto de investigación consiste en evaluar durante la operación si el residu
 % puede seguir usando el residual aunque su validez haya disminuido, y
 % esa discrepancia puede perjudicar las decisiones y el desempeño en lazo
 % cerrado. No repitas el recorrido histórico ni toda la motivación.
+Para ilustrar el problema de nvestigacion se presenta una estructura de control donde un MPC utiliza un modelo híbrido compuesto por la unión de un modelo de bicicleta con un modelo residual entrenado. 
+
+% ============================================================
+% Modelo de bicicleta: estados, ecuaciones y parámetros
+% ============================================================
+
+El modelo de bicicleta dinámico lineal representa los movimientos lateral y de guiñada del vehículo, considerando pequeños ángulos de deriva de los neumáticos y velocidad longitudinal constante. Para el seguimiento de trayectoria, este modelo se amplía con los errores lateral y de orientación, dando lugar al vector de estados:
 %
+\begin{equation}
+    \mathbf{x} =
+    \begin{bmatrix}
+        e_y & e_\psi & v_y & r
+    \end{bmatrix}^{\mathsf{T}},
+    \label{eq:bicycle_states}
+\end{equation}
+%
+donde $e_\psi = \psi-\psi_{\mathrm{ref}}$.
+La entrada de control es el ángulo efectivo de dirección de las ruedas
+delanteras, $\delta$, mientras que la curvatura de la trayectoria de referencia,
+$\kappa_{\mathrm{ref}}$, constituye una entrada conocida.
+
+Las ecuaciones del modelo son
+%
+\begin{align}
+    \dot{e}_y
+    &= V_{x,0}e_\psi + v_y,
+    \label{eq:bicycle_ey}\\
+    %
+    \dot{e}_\psi
+    &= r - V_{x,0}\kappa_{\mathrm{ref}},
+    \label{eq:bicycle_epsi}\\
+    %
+    \dot{v}_y
+    &= -\frac{C_f+C_r}{mV_{x,0}}v_y
+    + \left(
+        \frac{C_rl_r-C_fl_f}{mV_{x,0}}-V_{x,0}
+      \right)r
+    + \frac{C_f}{m}\delta,
+    \label{eq:bicycle_vy}\\
+    %
+    \dot{r}
+    &= \frac{C_rl_r-C_fl_f}{I_zV_{x,0}}v_y
+    - \frac{C_fl_f^2+C_rl_r^2}{I_zV_{x,0}}r
+    + \frac{C_fl_f}{I_z}\delta.
+    \label{eq:bicycle_r}
+\end{align}
+
+Las rigideces laterales $C_f$ y $C_r$ representan valores equivalentes
+por eje. Las fuerzas laterales se aproximan linealmente, sin
+saturación explícita por adherencia.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Estados y entradas del modelo de bicicleta ampliado.}
+    \label{tab:bicycle_variables}
+    \begin{tabular}{@{}lll@{}}
+        \toprule
+        Símbolo & Descripción & Unidad \\
+        \midrule
+        $e_y$ & Error lateral respecto a la trayectoria & $\mathrm{m}$ \\
+        $e_\psi$ & Error de orientación & $\mathrm{rad}$ \\
+        $v_y$ & Velocidad lateral en el centro de gravedad
+            & $\mathrm{m/s}$ \\
+        $r$ & Velocidad angular de guiñada & $\mathrm{rad/s}$ \\
+        $\delta$ & Ángulo efectivo de dirección delantero
+            & $\mathrm{rad}$ \\
+        $\kappa_{\mathrm{ref}}$ & Curvatura de la trayectoria de referencia
+            & $\mathrm{m}^{-1}$ \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+% ============================================================
+% Representación continua en espacio de estados
+% ============================================================
+
+La representación continua en espacio de estados es
+%
+\begin{equation}
+    \dot{\mathbf{x}}
+    =
+    \mathbf{A}_c\mathbf{x}
+    + \mathbf{B}_c\delta
+    + \mathbf{E}_c\kappa_{\mathrm{ref}},
+    \label{eq:bicycle_continuous}
+\end{equation}
+%
+con
+%
+\begin{equation}
+    \mathbf{A}_c =
+    \begin{bmatrix}
+        0 & V_{x,0} & 1 & 0 \\
+        0 & 0 & 0 & 1 \\
+        0 & 0
+          & -\dfrac{C_f+C_r}{mV_{x,0}}
+          & \dfrac{C_rl_r-C_fl_f}{mV_{x,0}}-V_{x,0} \\
+        0 & 0
+          & \dfrac{C_rl_r-C_fl_f}{I_zV_{x,0}}
+          & -\dfrac{C_fl_f^2+C_rl_r^2}{I_zV_{x,0}}
+    \end{bmatrix},
+    \label{eq:bicycle_Ac}
+\end{equation}
+%
+\begin{equation}
+    \mathbf{B}_c =
+    \begin{bmatrix}
+        0 \\
+        0 \\
+        C_f/m \\
+        C_fl_f/I_z
+    \end{bmatrix},
+    \qquad
+    \mathbf{E}_c =
+    \begin{bmatrix}
+        0 \\
+        -V_{x,0} \\
+        0 \\
+        0
+    \end{bmatrix}.
+    \label{eq:bicycle_Bc_Ec}
+\end{equation}
+
+\begin{table}[htbp]
+    \centering
+    \caption{Parámetros utilizados en el modelo de bicicleta nominal.}
+    \label{tab:bicycle_parameters}
+    \begin{tabular}{@{}llll@{}}
+        \toprule
+        Símbolo & Descripción & Valor & Unidad \\
+        \midrule
+        $m$ & Masa del vehículo
+            & $1501$ & $\mathrm{kg}$ \\
+        $I_z$ & Momento de inercia de guiñada
+            & $2192.089539$ & $\mathrm{kg\,m^2}$ \\
+        $l_f$ & Distancia del CG al eje delantero
+            & $1.049562958$ & $\mathrm{m}$ \\
+        $l_r$ & Distancia del CG al eje trasero
+            & $1.860437042$ & $\mathrm{m}$ \\
+        $C_f$ & Rigidez lateral equivalente del eje delantero
+            & $159055$ & $\mathrm{N/rad}$ \\
+        $C_r$ & Rigidez lateral equivalente del eje trasero
+            & $92776.5$ & $\mathrm{N/rad}$ \\
+        $V_{x,0}$ & Velocidad longitudinal nominal
+            & $60/3.6$ & $\mathrm{m/s}$ \\
+        $T_s$ & Período de muestreo
+            & $0.020$ & $\mathrm{s}$ \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+% ============================================================
+% Modelo discreto
+% ============================================================
+
+El modelo se discretiza mediante un retenedor de orden cero
+(\textit{zero-order hold}, ZOH), considerando las entradas constantes
+en cada intervalo de muestreo:
+%
+\begin{equation}
+    \mathbf{x}_{k+1}
+    =
+    \mathbf{A}_d\mathbf{x}_k
+    + \mathbf{B}_d\delta_k
+    + \mathbf{E}_d\kappa_{\mathrm{ref},k},
+    \label{eq:bicycle_discrete}
+\end{equation}
+%
+donde
+%
+\begin{align}
+    \mathbf{A}_d
+    &= \exp\left(\mathbf{A}_cT_s\right),
+    \label{eq:bicycle_Ad}\\
+    %
+    \begin{bmatrix}
+        \mathbf{B}_d & \mathbf{E}_d
+    \end{bmatrix}
+    &=
+    \int_0^{T_s}
+        \exp\left(\mathbf{A}_c\tau\right)
+        \begin{bmatrix}
+            \mathbf{B}_c & \mathbf{E}_c
+        \end{bmatrix}
+    \,\mathrm{d}\tau.
+    \label{eq:bicycle_Bd_Ed}
+\end{align}
+
+Las matrices se calculan a la velocidad nominal $V_{x,0}$ y
+se mantienen constantes durante la simulación. Así, el modelo interno
+utilizado en B0 es lineal e invariante en el tiempo, sin corrección
+residual aprendida.
+
 % PASO 9. Explica aquí, en otro párrafo breve, qué necesitas conocer durante
 % la operación: si la información aprendida sigue siendo útil para control
 % y cómo actuar cuando deja de serlo. Menciona incertidumbre, calibración
@@ -1199,7 +1391,7 @@ S_{\mathrm{OOD},k}
 
 % Contribución opcional si la campaña experimental alcanza suficiente
 % amplitud y profundidad. No prometerla como contribución principal en la
-% qualificação si todavía no existe evidencia suficiente.
+% examen de calificación si todavía no existe evidencia suficiente.
 
 \section{Posibles extensiones}
 
