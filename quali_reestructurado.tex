@@ -1,0 +1,1790 @@
+\documentclass[12pt,a4paper]{report}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish]{babel}
+
+% Idioma de trabajo: español para revisar contenido y estructura.
+% La traducción de la tesis al inglés se realizará al final.
+\usepackage{geometry}
+\usepackage{setspace}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{longtable}
+
+\geometry{
+    left=3cm,
+    right=2cm,
+    top=3cm,
+    bottom=2cm
+}
+
+\onehalfspacing
+
+\begin{document}
+
+% ============================================================
+% PORTADA
+% ============================================================
+
+\begin{titlepage}
+    \centering
+
+    {\Large Universidad XXXXX\par}
+    \vspace{0.5cm}
+
+    {\Large Programa de Doctorado en XXXXX\par}
+
+    \vspace{3cm}
+
+    {\LARGE \textbf{Título provisional de la investigación}\par}
+
+    \vspace{1cm}
+
+    {\large
+    Estimación de la validez durante la operación para integrar
+    modelos híbridos con aprendizaje en el control de la dinámica vehicular
+    \par}
+
+    \vfill
+
+    {\large Doctorando\par}
+    {\large Director de tesis\par}
+
+    \vspace{1cm}
+
+    {\large Año\par}
+
+\end{titlepage}
+
+
+% ============================================================
+% RESUMEN
+% ============================================================
+
+\begin{abstract}
+
+% Escribir esta sección al final.
+%
+% El resumen deberá contener, en este orden:
+%
+% 1. Contexto:
+%    - los modelos aprendidos e híbridos permiten compensar
+%      discrepancias de modelos físicos en control vehicular;
+%    - su utilidad closed-loop depende de que la información aprendida
+%      siga siendo válida durante la operación.
+%
+% 2. Problema:
+%    - la validez puede degradarse cuando el vehículo opera en
+%      regímenes físicos, regiones de estado o condiciones de entrada
+%      no representadas durante el entrenamiento;
+%    - incluir variaciones de masa/carga y parámetros de neumáticos,
+%      además de fricción; distinguir cambio físico e incertidumbre paramétrica;
+%    - el controlador puede continuar utilizando información aprendida
+%      aun cuando esta pierda confiabilidad.
+%
+% 3. Propuesta:
+%    - modelo physics + learned residual;
+%    - caracterización runtime mediante incertidumbre aleatoria,
+%      incertidumbre epistémica, calibración y un indicador OOD de
+%      bajo costo computacional;
+%    - construcción de una señal de validez/confianza C_k;
+%    - uso de C_k para adaptar un MPC/NMPC.
+%
+% 4. Evaluación:
+%    - shifts vehiculares físicamente interpretables: fricción, masa/carga,
+%      rigidez lateral de neumáticos y rango de operación;
+%    - comparación con baselines sin validity awareness, validity-only
+%      y OOD-only;
+%    - métricas de modelo, validity/OOD y, principalmente, closed-loop.
+%
+% 5. Contribución esperada:
+%    - control-relevant validity estimation;
+%    - validity-aware vehicle control;
+%    - runtime validity characterization;
+%    - eventualmente, taxonomía experimental de shifts vehiculares.
+
+\end{abstract}
+
+\tableofcontents
+
+
+% ============================================================
+% CAPÍTULO 1
+% ============================================================
+
+\chapter{Introducción}
+
+% La introducción debe construir UNA única cadena causal:
+%
+% cambio de condición operativa o parámetro de la dinámica vehicular
+% -> posible cambio de validez de la información aprendida
+% -> posible degradación del control
+% -> estimación runtime de validez
+% -> reacción del controlador.
+%
+% No presentar OOD + uncertainty como el ``gap'' en sí mismo.
+% Son herramientas candidatas para estimar validez runtime.
+% Criterio transversal de alcance: la fricción ilustra el problema, no lo
+% define por sí sola. Incluir masa/carga y rigidez lateral de neumáticos
+% (cornering stiffness), además de cambios del rango de operación.
+% Distinguir cambio físico, valor desconocido y error de estimación.
+% No asumir que todo cambio es OOD ni que todo OOD invalida el residual.
+% El objetivo es estimar validez para control, no identificar necesariamente
+% cada parámetro físico. Evitar presentar parámetros difíciles de medir
+% directamente como imposibles de estimar.
+
+
+% GUION DE REDACCION: sigue los pasos en orden. Cada paso orienta un
+% párrafo, salvo donde se indica otra extensión. Los comentarios con %
+% son notas de trabajo de LaTeX y no aparecen en el PDF.
+% Mantén el recorrido: situación concreta -> dificultad física -> límites
+% del modelo -> validez de lo aprendido -> problema y pregunta doctoral.
+%
+% PASO 1. Habla aquí de una situación breve que motive el problema.
+% Usa la historia de Mario como ejemplo ilustrativo, no como caso
+% documentado si no tienes una fuente. Al revisarla, concentra la atención
+% en el cambio de condiciones de conducción y la dificultad de controlar
+% el vehículo; reduce los detalles narrativos que no ayudan a ese vínculo.
+Consideremos a un conductor que circula por una autopista a 100 km/h cuando empieza a llover. Al disminuir la visibilidad, decide detenerse en el arcén. Durante la maniobra, el agua sobre la calzada puede reducir la adherencia entre los neumáticos y la carretera, dificultando el cambio de dirección. Lo que comenzó como un intento de detenerse puede, en estas condiciones, provocar una pérdida de control y un riesgo de colisión con otros vehículos o con las barreras de la vía.
+
+% PASO 2. Conecta aquí el ejemplo con la motivación científica.
+% Distingue la pérdida de visibilidad del posible cambio de adherencia:
+% la tesis se concentra en la dinámica y el control, no en la percepción.
+% No atribuyas el accidente a una causa física que el relato no demuestra.
+% Si mantienes afirmaciones sobre frecuencia de accidentes, apóyalas con
+% una fuente; también puedes cerrar el ejemplo sin recurrir a estadísticas.
+% Explicitar que el relato introduce un caso de variación dinámica;
+% no convertir el estado del pavimento en el objeto central de la tesis.
+
+La dificultad de este ejemplo reside en ejecutar una maniobra cuando cambia la adherencia disponible. La dirección y el frenado dependen de las fuerzas transmitidas a través del contacto entre los neumáticos y la carretera, por lo que una variación en estas condiciones puede alterar la capacidad del vehículo para seguir la trayectoria prevista \cite{Bertipaglia2024Model}.
+
+La adherencia disponible varía con la superficie del pavimento y con las condiciones que se encuentran a lo largo del recorrido. Los estudios sobre fricción del pavimento relacionan la resistencia al deslizamiento con la textura de la superficie y las características de la vía \cite{Weng2026Leveraging,Isasa2025ASkid}. El agua sobre la calzada puede dificultar el contacto entre los neumáticos y la carretera, mientras que los surcos en las zonas de rodadura pueden retener agua y aumentar el riesgo de hidroplaneo \cite{Salleh2019Performance}.
+
+Estos límites cobran relevancia cuando el conductor necesita cambiar de carril con poco margen de reacción o desviarse para evitar un obstáculo. Las fuerzas laterales necesarias para seguir la trayectoria prevista pueden superar las que el contacto entre los neumáticos y la carretera permite transmitir \cite{Bertipaglia2024Model}. A velocidades elevadas y con baja adherencia, esta limitación puede dar lugar a deslizamiento lateral e inestabilidad de guiñada, comprometiendo la maniobra \cite{Hu2025Lanechanging}.
+
+% PASO 3. Habla aquí de un antecedente del control automotriz y de su
+% propósito: ayudar a regular el movimiento del vehículo. Dedica como
+% máximo UN párrafo breve a la historia, con uno o dos hitos pertinentes
+% para frenado/estabilidad (por ejemplo, ABS y ESC, si los documentas).
+% No necesitas identificar el "primer control" de toda la industria:
+% si usas esa expresión, delimita el sistema y verifica fecha y fuente.
+% Revisa también el alcance temporal de la frase ya escrita.
+% Cierra el párrafo enlazando esos avances con la necesidad de responder
+% a condiciones variables de conducción. No hagas una cronología ni
+% describas el funcionamiento de cada sistema: los fundamentos van en
+% el capítulo 3 y la revisión comparativa de trabajos en el capítulo 5.
+Los sistemas de control vehicular asisten al conductor en el frenado y el mantenimiento de la estabilidad. El sistema antibloqueo de frenos (ABS) busca evitar que las ruedas se bloqueen durante el frenado \cite{BoschNDSafe}. El control electrónico de estabilidad (ESC, por sus siglas en inglés) ayuda a corregir las desviaciones entre el movimiento del vehículo y la dirección que pretende seguir el conductor; el programa electrónico de estabilidad (ESP) de Bosch, introducido en 1995, es una implementación de esta función \cite{Bosch2025ESP}. Desde entonces, el desarrollo se ha extendido a la coordinación del frenado, la dirección y la propulsión. Esta coordinación ofrece más posibilidades de actuar sobre el movimiento del vehículo y requiere información sobre su respuesta, incluidos estados y parámetros que pueden necesitar estimarse durante la operación \cite{Skrickij2024Review}.
+
+
+
+\section{Contexto y motivación}
+
+% PASO 4. Presenta cambios de condiciones y parámetros de la dinámica:
+% fricción neumático--carretera, masa/carga y rigidez lateral de neumáticos.
+% La fricción es un ejemplo ilustrativo, no el eje exclusivo de la tesis.
+% Distingue parámetros variables de parámetros difíciles de medir directamente.
+% Explica cualitativamente
+% por qué interesan al frenado, al seguimiento de trayectoria y a la
+% estabilidad. Recupera el ejemplo inicial sin volver a narrarlo.
+% Selecciona trabajos que estudien cambios de fricción, masa/carga o
+% parámetros de neumáticos y su efecto sobre el control. No atribuyas
+% resultados sobre un parámetro a estudios que solo evalúan otro.
+% Di qué observan y por qué importa aquí, sin hacer un catálogo de autores.
+% Selecciona las referencias de la revisión; no añadas nombres sin
+% comprobar que respaldan esa afirmación. Las ecuaciones de neumáticos
+% y el papel de masa, rigidez lateral y mu van en el capítulo 3;
+% la comparación de autores,
+% en el 5; los valores y escenarios que probarás, en el 7.
+
+La respuesta del vehículo también depende de su masa, su carga y las propiedades de los neumáticos. La fricción y las cargas por eje afectan a la predicción de la distancia de frenado \cite{Yun2026RealTime}, mientras que la masa y la rigidez lateral de los neumáticos intervienen en la descripción del movimiento lateral y de guiñada \cite{Yeneneh2026Adaptive}. En el rango lineal, la rigidez lateral es la pendiente de la relación entre la fuerza lateral del neumático y su ángulo de deriva \cite{Skrickij2024Review}. Por tanto, describe un aspecto del comportamiento del neumático distinto del límite de fricción: este último acota las fuerzas disponibles, mientras que la rigidez influye en cómo se desarrolla la fuerza lateral con el ángulo de deriva. Las variaciones de estas magnitudes pueden afectar tanto a las fuerzas disponibles para una maniobra como al movimiento que resulta de ellas.
+
+Los estudios sobre control vehicular adaptativo ilustran las consecuencias de estas variaciones. Xu et al. evalúan el seguimiento de trayectoria mediante simulaciones en vías con fricción baja y variable, y obtienen menores errores laterales y de orientación con su estrategia adaptativa que con los controladores de comparación \cite{Xu2026Parallel}. Yeneneh et al. utilizan estimación de parámetros durante la operación para actualizar un modelo de seguimiento lateral que incluye masa y rigidez lateral. En sus simulaciones, el controlador adaptativo reduce los errores de seguimiento respecto al control predictivo convencional y a un regulador cuadrático lineal \cite{Yeneneh2026Adaptive}. Estos resultados motivan considerar cambios tanto en el entorno vial como en el propio vehículo y examinar si la descripción de la dinámica utilizada para el control sigue siendo representativa.
+
+
+
+%
+% PASO 5. Explica aquí por qué el controlador necesita una representación
+% de la dinámica y por qué un modelo físico simplificado puede presentar
+% discrepancias al variar las condiciones. Introduce MPC/NMPC en una frase
+% como control que utiliza predicciones. Evita sugerir que todo control
+% automotriz usa MPC o modelos aprendidos. Deja su formulación al capítulo 3.
+% Relaciona las discrepancias con masa/carga, rigidez lateral y fricción,
+% distinguiendo valores nominales, variaciones reales y valores estimados.
+
+Los controladores predictivos utilizan un modelo para relacionar las entradas de control con la respuesta que esperan del vehículo. El control predictivo basado en modelos (MPC, por sus siglas en inglés), incluida su formulación no lineal (NMPC), utiliza estas predicciones para seleccionar entradas sobre un horizonte finito, teniendo en cuenta las restricciones \cite{Su2026ReinforcementLearningBased}. El modelo debe ofrecer suficiente detalle para fundamentar estas decisiones y mantener el problema de control resoluble con los recursos de cómputo disponibles. Chen et al., por ejemplo, emplean un modelo bicicleta simplificado para equilibrar la precisión de la predicción y el costo computacional \cite{Chen2026Hybrid}. Estas simplificaciones pueden introducir discrepancias entre el movimiento predicho y el real. Pan et al. identifican la estructura del modelo y los errores paramétricos como fuentes de estas discrepancias y las consideran en un controlador predictivo robusto \cite{Pan2026A}.
+
+La incertidumbre sobre el valor de un parámetro no implica que este esté cambiando. Una diferencia entre su valor real y el supuesto puede afectar a las predicciones incluso cuando su valor físico permanece constante. Yeneneh y Sufe consideran la incertidumbre en la masa, las rigideces laterales de los neumáticos delanteros y traseros y la fricción de la carretera dentro de una formulación de control predictivo robusto \cite{Yeneneh2026AutoDyn}. Li et al. abordan la incertidumbre en la rigidez lateral y el momento de inercia de guiñada mediante un controlador con acoplamiento longitudinal y lateral, evaluado en pruebas donde hardware real interactúa con una simulación (HIL) \cite{Li2026TrajectoryTracking}. Estos estudios motivan tener en cuenta la incertidumbre paramétrica al utilizar un modelo simplificado para el control.
+
+Conviene, por tanto, distinguir los parámetros físicos del vehículo, los valores nominales utilizados por el modelo y las estimaciones obtenidas a partir de mediciones durante la operación. La estimación puede reducir el error paramétrico, pero no elimina las aproximaciones estructurales del modelo. Chen et al. reflejan esta distinción al combinar la calibración de un modelo físico nominal con la compensación de la dinámica no modelada restante \cite{Chen2026DataMechanism}. Su formulación ilustra por qué mejorar la predicción puede requerir tratar discrepancias que la calibración de parámetros por sí sola no recoge.
+
+%
+% PASO 6. Habla aquí de los modelos híbridos como una vía para corregir
+% parte de esas discrepancias con datos. Explica en palabras que el residual
+% aprendido complementa al modelo físico y cita trabajos representativos.
+% No hagas un catálogo de redes o algoritmos: la revisión va en el
+% capítulo 5 y el diseño concreto de tu modelo en los capítulos 6 y 7.
+
+El modelado híbrido aborda parte de estas discrepancias combinando ecuaciones físicas con información aprendida a partir de datos \cite{Cheng2025Deep,Zhou2025Hybrid}. En un modelo con un residual aprendido aditivo, el componente físico proporciona una predicción nominal y el componente aprendido estima una corrección a partir de la diferencia entre esa predicción y la respuesta observada \cite{Kabzan2019LearningBased,Chen2026Hybrid}. La corrección puede representar efectos que el modelo simplificado no describe de forma adecuada. En la formulación de Kabzan et al., los valores objetivo del entrenamiento se obtienen a partir de transiciones de estado medidas y predicciones nominales, lo que permite aprender el error del modelo sin identificar por separado sus causas físicas \cite{Kabzan2019LearningBased}.
+
+Kabzan et al. utilizan regresión por procesos gaussianos para esta corrección en conducción autónoma de competición. Durante las pruebas con un vehículo de competición a escala real, el modelo corregido mantuvo un error medio de predicción aproximadamente constante a medida que la conducción se volvía más exigente en vueltas sucesivas, mientras que el error del modelo nominal aumentó \cite{Kabzan2019LearningBased}. El aprendizaje también puede asignarse a componentes individuales de las fuerzas. Zhou et al. combinan un modelo de tracción basado en una red neuronal con la dinámica longitudinal física y un estimador de la masa del vehículo y de un coeficiente modificado de fricción de rodadura. Su evaluación incluye cargas y condiciones de la vía distintas de las utilizadas para el entrenamiento \cite{Zhou2025Hybrid}. Se trata de una arquitectura híbrida de modelado de fuerzas y estimación de parámetros, cuya función del aprendizaje difiere de la de un residual aditivo.
+
+Otros enfoques híbridos fusionan modelos físicos y neuronales para predecir la dinámica o acoplan un estimador neuronal con un observador físico para estimar el ángulo de deriva del vehículo \cite{Cheng2025Deep,Bertipaglia2024An}. El conocimiento físico también puede orientar el entrenamiento: Wang et al. incluyen residuos de las ecuaciones de equilibrio de fuerzas en el objetivo de aprendizaje de un modelo de dinámica vehicular \cite{Wang2027Adaptive}. Estos usos del aprendizaje cumplen funciones distintas. En esta tesis, el interés se centra en un residual aditivo dentro del modelo de predicción del controlador, evaluado tanto por la precisión de sus predicciones como por su efecto en el control.
+
+%
+% PASO 7. Cierra la motivación con la dificultad que introduce esa ayuda:
+% lo aprendido bajo ciertas condiciones puede perder utilidad cuando estas
+% cambian. Usa un ejemplo conceptual de entrenamiento y operación con
+% distinta masa/carga o rigidez lateral para ampliar el caso de lluvia,
+% sin fijar aún el experimento. El cambio puede ocurrir entre recorridos
+% o durante uno; no presupongas cambios abruptos de todos los parámetros.
+% Esta transición debe llevar al problema de decidir cuándo seguir
+% confiando en el residual, no a exigir identificar la causa del cambio.
+%
+% Desarrollar desde el problema físico/controlístico:
+%
+% - la dinámica vehicular depende de condiciones operativas y de
+%   parámetros que pueden variar entre recorridos o durante la conducción;
+% - modelos físicos control-oriented son útiles pero presentan
+%   discrepancias frente a la planta real;
+% - modelos híbridos physics + learning permiten aprender parte
+%   del model mismatch conservando estructura física;
+% - el uso de información aprendida dentro del lazo de control
+%   introduce una nueva dependencia: su validez durante runtime.
+%
+% Evitar una introducción general a IA, vehículos autónomos o
+% Machine Learning que no contribuya directamente al problema.
+Consideremos, como ejemplo conceptual, un residual entrenado con una determinada carga del vehículo y utilizado después en un recorrido con pasajeros o carga adicionales. Si el modelo nominal y el residual permanecen sin cambios, la corrección aprendida puede dejar de describir la discrepancia bajo la nueva carga. Los cambios en las propiedades de los neumáticos pueden plantear una dificultad similar: velocidades y entradas de dirección conocidas no tienen por qué producir la misma respuesta cuando los parámetros subyacentes son distintos \cite{Yeneneh2026AutoDyn}.
+
+La carga puede variar entre recorridos y las características de los neumáticos pueden evolucionar durante la conducción. Kalaria et al. aprenden y actualizan un modelo de neumáticos durante la operación para tener en cuenta cambios en su comportamiento de deslizamiento lateral; su evaluación utiliza simuladores numéricos y de alta fidelidad, e incluye cambios simulados que buscan representar el desgaste \cite{Kalaria2024Adaptive}. En un contexto más general, Brunke et al. identifican la escasez de datos y los cambios de distribución como dificultades prácticas del control basado en aprendizaje \cite{Brunke2022Safe}. Un cambio no invalida necesariamente un residual aprendido, pero el desempeño en unas condiciones no establece por sí solo su utilidad en otras. Chen et al. identifican la capacidad limitada de una corrección entrenada antes de la operación para adaptarse a nuevas condiciones como una motivación para actualizarla durante la operación \cite{Chen2026Hybrid}.
+
+El reto de investigación consiste en evaluar durante la operación si el residual sigue aportando información útil para el control cuando cambia la respuesta del vehículo, y determinar cómo esa evaluación debe influir en el controlador. Para ello, es necesario relacionar el error del modelo con las decisiones a las que afecta, sin que sea imprescindible identificar la causa física de la discrepancia.
+
+
+\section{Problema de investigación}
+
+% PASO 8. Formula aquí el problema en un párrafo directo: el controlador
+% puede seguir usando el residual aunque su validez haya disminuido, y
+% esa discrepancia puede perjudicar las decisiones y el desempeño en lazo
+% cerrado. No repitas el recorrido histórico ni toda la motivación.
+Para ilustrar el problema de nvestigacion se presenta una estructura de control donde un MPC utiliza un modelo híbrido compuesto por la unión de un modelo de bicicleta con un modelo residual entrenado. El objetivo es que el modelo residual reduzca el error del modelo de bicicleta frente al modelo de Carsim. 
+
+El uso de formulaciones de alta fidelidad, como las de software comercial tipo CarSim o Adams, garantiza una representación detallada de suspensiones y acoplamientos tridimensionales \cite{Watanabe2026THE, Yun2023Dynamic,Dai2022RealTime}. Sin embargo, estas formulaciones no lineales son costosas y sufren problemas de identificabilidad cuando los datos son escasos \cite{Unsal2025Bridging}.
+
+Además CarSim no se utiliza como un modelo automotriz embarcado (on-board) dentro de las unidades de control electrónico (ECU) de producción debido a su alta complejidad computacional, arquitectura cerrada y formulación multicuerpo no lineal \cite{Watanabe2026THE,Pariota2020Integrating}. En la ingeniería automotriz, CarSim actúa como una planta de referencia de alta fidelidad ejecutada en computadoras de escritorio o procesadores de tiempo real dedicados para validar controladores externos, pero no como el modelo interno de cálculo en un procesador embarcado \cite{Brugnolli2026Predictive}.
+
+% ============================================================
+% Modelo de bicicleta: estados, ecuaciones y parámetros
+% ============================================================
+
+El modelo de bicicleta dinámico lineal representa los movimientos lateral y de guiñada del vehículo, considerando pequeños ángulos de deriva de los neumáticos y velocidad longitudinal constante. Para el seguimiento de trayectoria, este modelo se amplía con los errores lateral y de orientación, dando lugar al vector de estados:
+%
+\begin{equation}
+    \mathbf{x} =
+    \begin{bmatrix}
+        e_y & e_\psi & v_y & r
+    \end{bmatrix}^{\mathsf{T}},
+    \label{eq:bicycle_states}
+\end{equation}
+%
+donde $e_\psi = \psi-\psi_{\mathrm{ref}}$.
+La entrada de control es el ángulo efectivo de dirección de las ruedas
+delanteras, $\delta$, mientras que la curvatura de la trayectoria de referencia,
+$\kappa_{\mathrm{ref}}$, constituye una entrada conocida.
+
+Las ecuaciones del modelo son
+%
+\begin{align}
+    \dot{e}_y
+    &= V_{x,0}e_\psi + v_y,
+    \label{eq:bicycle_ey}\\
+    %
+    \dot{e}_\psi
+    &= r - V_{x,0}\kappa_{\mathrm{ref}},
+    \label{eq:bicycle_epsi}\\
+    %
+    \dot{v}_y
+    &= -\frac{C_f+C_r}{mV_{x,0}}v_y
+    + \left(
+        \frac{C_rl_r-C_fl_f}{mV_{x,0}}-V_{x,0}
+      \right)r
+    + \frac{C_f}{m}\delta,
+    \label{eq:bicycle_vy}\\
+    %
+    \dot{r}
+    &= \frac{C_rl_r-C_fl_f}{I_zV_{x,0}}v_y
+    - \frac{C_fl_f^2+C_rl_r^2}{I_zV_{x,0}}r
+    + \frac{C_fl_f}{I_z}\delta.
+    \label{eq:bicycle_r}
+\end{align}
+
+Las rigideces laterales $C_f$ y $C_r$ representan valores equivalentes
+por eje. Las fuerzas laterales se aproximan linealmente, sin
+saturación explícita por adherencia.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Estados y entradas del modelo de bicicleta ampliado.}
+    \label{tab:bicycle_variables}
+    \begin{tabular}{@{}lll@{}}
+        \toprule
+        Símbolo & Descripción & Unidad \\
+        \midrule
+        $e_y$ & Error lateral respecto a la trayectoria & $\mathrm{m}$ \\
+        $e_\psi$ & Error de orientación & $\mathrm{rad}$ \\
+        $v_y$ & Velocidad lateral en el centro de gravedad
+            & $\mathrm{m/s}$ \\
+        $r$ & Velocidad angular de guiñada & $\mathrm{rad/s}$ \\
+        $\delta$ & Ángulo efectivo de dirección delantero
+            & $\mathrm{rad}$ \\
+        $\kappa_{\mathrm{ref}}$ & Curvatura de la trayectoria de referencia
+            & $\mathrm{m}^{-1}$ \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+% ============================================================
+% Representación continua en espacio de estados
+% ============================================================
+
+La representación continua en espacio de estados es
+%
+\begin{equation}
+    \dot{\mathbf{x}}
+    =
+    \mathbf{A}_c\mathbf{x}
+    + \mathbf{B}_c\delta
+    + \mathbf{E}_c\kappa_{\mathrm{ref}},
+    \label{eq:bicycle_continuous}
+\end{equation}
+%
+con
+%
+\begin{equation}
+    \mathbf{A}_c =
+    \begin{bmatrix}
+        0 & V_{x,0} & 1 & 0 \\
+        0 & 0 & 0 & 1 \\
+        0 & 0
+          & -\dfrac{C_f+C_r}{mV_{x,0}}
+          & \dfrac{C_rl_r-C_fl_f}{mV_{x,0}}-V_{x,0} \\
+        0 & 0
+          & \dfrac{C_rl_r-C_fl_f}{I_zV_{x,0}}
+          & -\dfrac{C_fl_f^2+C_rl_r^2}{I_zV_{x,0}}
+    \end{bmatrix},
+    \label{eq:bicycle_Ac}
+\end{equation}
+%
+\begin{equation}
+    \mathbf{B}_c =
+    \begin{bmatrix}
+        0 \\
+        0 \\
+        C_f/m \\
+        C_fl_f/I_z
+    \end{bmatrix},
+    \qquad
+    \mathbf{E}_c =
+    \begin{bmatrix}
+        0 \\
+        -V_{x,0} \\
+        0 \\
+        0
+    \end{bmatrix}.
+    \label{eq:bicycle_Bc_Ec}
+\end{equation}
+
+\begin{table}[htbp]
+    \centering
+    \caption{Parámetros utilizados en el modelo de bicicleta nominal.}
+    \label{tab:bicycle_parameters}
+    \begin{tabular}{@{}llll@{}}
+        \toprule
+        Símbolo & Descripción & Valor & Unidad \\
+        \midrule
+        $m$ & Masa del vehículo
+            & $1501$ & $\mathrm{kg}$ \\
+        $I_z$ & Momento de inercia de guiñada
+            & $2192.089539$ & $\mathrm{kg\,m^2}$ \\
+        $l_f$ & Distancia del CG al eje delantero
+            & $1.049562958$ & $\mathrm{m}$ \\
+        $l_r$ & Distancia del CG al eje trasero
+            & $1.860437042$ & $\mathrm{m}$ \\
+        $C_f$ & Rigidez lateral equivalente del eje delantero
+            & $159055$ & $\mathrm{N/rad}$ \\
+        $C_r$ & Rigidez lateral equivalente del eje trasero
+            & $92776.5$ & $\mathrm{N/rad}$ \\
+        $V_{x,0}$ & Velocidad longitudinal nominal
+            & $60/3.6$ & $\mathrm{m/s}$ \\
+        $T_s$ & Período de muestreo
+            & $0.020$ & $\mathrm{s}$ \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+% ============================================================
+% Modelo discreto
+% ============================================================
+
+El modelo se discretiza mediante un retenedor de orden cero
+(\textit{zero-order hold}, ZOH), considerando las entradas constantes
+en cada intervalo de muestreo:
+%
+\begin{equation}
+    \mathbf{x}_{k+1}
+    =
+    \mathbf{A}_d\mathbf{x}_k
+    + \mathbf{B}_d\delta_k
+    + \mathbf{E}_d\kappa_{\mathrm{ref},k},
+    \label{eq:bicycle_discrete}
+\end{equation}
+%
+donde
+%
+\begin{align}
+    \mathbf{A}_d
+    &= \exp\left(\mathbf{A}_cT_s\right),
+    \label{eq:bicycle_Ad}\\
+    %
+    \begin{bmatrix}
+        \mathbf{B}_d & \mathbf{E}_d
+    \end{bmatrix}
+    &=
+    \int_0^{T_s}
+        \exp\left(\mathbf{A}_c\tau\right)
+        \begin{bmatrix}
+            \mathbf{B}_c & \mathbf{E}_c
+        \end{bmatrix}
+    \,\mathrm{d}\tau.
+    \label{eq:bicycle_Bd_Ed}
+\end{align}
+
+Las matrices se calculan a la velocidad nominal $V_{x,0}$ y se mantienen constantes durante la simulación. A este  modelo interno lineal compuesto solo por el modelo de bicicleta se le llama B0. 
+
+% ============================================================
+% Modelo híbrido: bicicleta y corrección residual B1
+% ============================================================
+
+Para complementar la descripción física de B0, se incorpora un
+modelo residual que estima las discrepancias de predicción de la
+velocidad lateral y de la velocidad angular de guiñada. La combinación
+del modelo de bicicleta con esta corrección aprendida se denomina B1.
+Su propósito es representar parte de la dinámica que no queda
+recogida por las aproximaciones del modelo nominal, conservando
+la estructura física como base de la predicción.
+
+Se define el vector de estados laterales como
+%
+\begin{equation}
+    \boldsymbol{\xi}_k =
+    \begin{bmatrix}
+        v_{y,k} \\
+        r_k
+    \end{bmatrix}.
+    \label{eq:b1_lateral_states}
+\end{equation}
+%
+La predicción física de estos estados se obtiene mediante
+%
+\begin{equation}
+    \hat{\boldsymbol{\xi}}^{\mathrm{B0}}_{k+1|k}
+    =
+    \mathbf{A}_{\mathrm{lat}}\boldsymbol{\xi}_k
+    + \mathbf{B}_{\mathrm{lat}}\delta_k,
+    \label{eq:b1_physical_prediction}
+\end{equation}
+%
+donde $\mathbf{A}_{\mathrm{lat}}\in\mathbb{R}^{2\times2}$ y
+$\mathbf{B}_{\mathrm{lat}}\in\mathbb{R}^{2\times1}$ son las
+submatrices de $\mathbf{A}_d$ y $\mathbf{B}_d$ correspondientes
+a los estados $v_y$ y $r$, respectivamente.
+
+El residual utilizado como objetivo de entrenamiento es la diferencia
+entre la respuesta de CarSim en el instante siguiente y la predicción
+física a un paso:
+%
+\begin{equation}
+    \mathbf{d}_k
+    =
+    \boldsymbol{\xi}^{\mathrm{CarSim}}_{k+1}
+    -
+    \hat{\boldsymbol{\xi}}^{\mathrm{B0}}_{k+1|k}
+    =
+    \begin{bmatrix}
+        d_{v_y,k} \\
+        d_{r,k}
+    \end{bmatrix}.
+    \label{eq:b1_residual_target}
+\end{equation}
+%
+Ambas respuestas se comparan para la misma transición, utilizando
+el estado inicial y la entrada de dirección correspondientes.
+El intervalo de predicción coincide con el período de muestreo
+del controlador, $T_s=0.02\,\mathrm{s}$. Por tanto, las componentes
+del residual tienen unidades de $\mathrm{m/s}$ y $\mathrm{rad/s}$:
+representan correcciones discretas de los estados, no de sus
+derivadas.
+
+El residual se aproxima mediante una red neuronal de tipo
+\textit{multilayer perceptron} (MLP), cuyo vector de entrada es
+%
+\begin{equation}
+    \mathbf{z}_k =
+    \begin{bmatrix}
+        V_{x,k} & v_{y,k} & r_k & \delta_k
+    \end{bmatrix}^{\mathsf{T}}.
+    \label{eq:b1_features}
+\end{equation}
+%
+La red proporciona una estimación determinista de las dos
+componentes del residual:
+%
+\begin{equation}
+    \hat{\mathbf{d}}_k
+    =
+    \mathbf{g}_{\boldsymbol{\theta}}(\mathbf{z}_k),
+    \label{eq:b1_residual_mapping}
+\end{equation}
+%
+donde $\boldsymbol{\theta}$ agrupa sus pesos y sesgos.
+Aunque la velocidad longitudinal medida forma parte de las
+entradas de la red, las matrices del modelo físico permanecen
+fijas en el punto nominal.
+
+La arquitectura contiene cuatro entradas, dos capas ocultas
+de 64 neuronas con activación ReLU y una capa de salida lineal
+de dos componentes. Las entradas y los objetivos se estandarizan
+mediante
+%
+\begin{align}
+    \tilde{\mathbf{z}}_k
+    &=
+    \mathbf{S}_z^{-1}
+    \left(\mathbf{z}_k-\boldsymbol{\mu}_z\right),
+    \label{eq:b1_input_normalization}\\
+    %
+    \tilde{\mathbf{d}}_k
+    &=
+    \mathbf{S}_d^{-1}
+    \left(\mathbf{d}_k-\boldsymbol{\mu}_d\right),
+    \label{eq:b1_target_normalization}
+\end{align}
+%
+donde $\boldsymbol{\mu}_z$ y $\boldsymbol{\mu}_d$ son los
+vectores de medias, mientras que $\mathbf{S}_z$ y $\mathbf{S}_d$
+son matrices diagonales con las desviaciones estándar.
+Estas estadísticas se calculan exclusivamente con los datos
+de entrenamiento y se mantienen para validación, prueba e
+inferencia. Los factores de escala inferiores a $10^{-12}$
+se sustituyen por uno.
+
+En el espacio estandarizado, la red se expresa como
+%
+\begin{align}
+    \mathbf{h}_{1,k}
+    &=
+    \rho\left(
+        \mathbf{W}_1\tilde{\mathbf{z}}_k+\mathbf{b}_1
+    \right),\\
+    %
+    \mathbf{h}_{2,k}
+    &=
+    \rho\left(
+        \mathbf{W}_2\mathbf{h}_{1,k}+\mathbf{b}_2
+    \right),\\
+    %
+    \hat{\tilde{\mathbf{d}}}_k
+    &=
+    \mathbf{W}_3\mathbf{h}_{2,k}+\mathbf{b}_3,
+\end{align}
+%
+con $\rho(a)=\max(0,a)$ aplicada componente a componente.
+La salida se transforma nuevamente a unidades físicas mediante
+%
+\begin{equation}
+    \hat{\mathbf{d}}_k
+    =
+    \boldsymbol{\mu}_d
+    +
+    \mathbf{S}_d\hat{\tilde{\mathbf{d}}}_k.
+    \label{eq:b1_denormalization}
+\end{equation}
+
+Los datos utilizados para ajustar B1 proceden de simulaciones
+en lazo cerrado con el MPC físico B0 y la planta CarSim.
+El dominio nominal comprende las maniobras DLC y DLCT,
+una velocidad de referencia de $60\,\mathrm{km/h}$,
+un coeficiente de adherencia $\mu=1$ y el vehículo
+\textit{C-Class hatchback}. Las muestras se adquieren a
+$50\,\mathrm{Hz}$ y las condiciones externas a este dominio
+se excluyen del ajuste y de la selección del modelo.
+
+La partición se realiza por corrida completa y por tipo de
+maniobra. Para cada maniobra, se reserva una corrida para
+validación y otra para prueba dentro del dominio nominal;
+las restantes se destinan al entrenamiento. De este modo,
+ninguna corrida comparte muestras entre particiones.
+El procedimiento requiere al menos tres corridas por maniobra
+y utiliza la semilla aleatoria 42 para su asignación.
+
+El ajuste se realiza con la función \texttt{fitrnet} de MATLAB,
+evaluando dos candidatos con límites de 100 y 200 iteraciones.
+Se selecciona el candidato que minimiza el RMSE conjunto
+de validación en el espacio estandarizado:
+%
+\begin{equation}
+    J_{\mathrm{val}}
+    =
+    \sqrt{
+        \frac{1}{2N_{\mathrm{val}}}
+        \sum_{k\in\mathcal{I}_{\mathrm{val}}}
+        \left\|
+            \tilde{\mathbf{d}}_k
+            -
+            \hat{\tilde{\mathbf{d}}}_k
+        \right\|_2^2
+    },
+    \label{eq:b1_validation_score}
+\end{equation}
+%
+donde $\mathcal{I}_{\mathrm{val}}$ contiene los índices de
+las $N_{\mathrm{val}}$ muestras de validación.
+La estandarización permite combinar ambas componentes sin
+sumar directamente errores expresados en unidades diferentes.
+El conjunto de prueba no interviene en la selección.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Configuración del modelo residual determinista B1.}
+    \label{tab:b1_configuration}
+    \begin{tabular}{@{}lp{0.60\linewidth}@{}}
+        \toprule
+        Elemento & Configuración \\
+        \midrule
+        Planta de adquisición
+            & CarSim, vehículo \textit{C-Class hatchback} \\
+        Controlador de adquisición
+            & MPC físico B0 en lazo cerrado \\
+        Dominio nominal
+            & DLC y DLCT, $60\,\mathrm{km/h}$, $\mu=1$ \\
+        Período de muestreo
+            & $0.02\,\mathrm{s}$ \\
+        Entradas
+            & $V_x$, $v_y$, $r$ y $\delta$ \\
+        Salidas
+            & Residuos de predicción a un paso de $v_y$ y $r$ \\
+        Arquitectura
+            & $4 \rightarrow 64 \rightarrow 64 \rightarrow 2$ \\
+        Activación oculta
+            & ReLU \\
+        Partición de datos
+            & Por corrida completa, separada por maniobra \\
+        Estandarización
+            & Estadísticas calculadas solo con entrenamiento \\
+        Límites de iteración
+            & 100 y 200 \\
+        Criterio de selección
+            & Menor RMSE conjunto estandarizado de validación \\
+        Semilla aleatoria
+            & 42 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+Finalmente, la predicción lateral del modelo híbrido es
+%
+\begin{equation}
+    \boxed{
+    \hat{\boldsymbol{\xi}}^{\mathrm{B1}}_{k+1|k}
+    =
+    \mathbf{A}_{\mathrm{lat}}\boldsymbol{\xi}_k
+    +
+    \mathbf{B}_{\mathrm{lat}}\delta_k
+    +
+    \mathbf{g}_{\boldsymbol{\theta}}(\mathbf{z}_k).
+    }
+    \label{eq:b1_hybrid_prediction}
+\end{equation}
+%
+El residual se suma directamente a la predicción física,
+sin multiplicarlo nuevamente por $T_s$, porque ya representa
+una discrepancia sobre un intervalo de muestreo.
+La evaluación predictiva compara B0 y B1 sobre las mismas
+transiciones del conjunto de prueba mediante el RMSE y el MAE
+de cada estado lateral.
+
+Esta estructura permite formular el problema de investigación:
+el controlador puede continuar utilizando la corrección aprendida
+cuando cambian las condiciones de operación, aunque su validez
+predictiva haya disminuido. Como B1 no proporciona una estimación
+de incertidumbre ni un indicador de validez, su incorporación
+no permite determinar por sí sola cuándo la corrección sigue
+siendo adecuada. Una discrepancia en las predicciones utilizadas
+por el MPC puede afectar la selección de las acciones de control
+y deteriorar el desempeño en lazo cerrado. Por ello, la evaluación
+del residual debe considerar tanto su precisión predictiva
+como las consecuencias de su utilización por el controlador.
+
+% PASO 9. Explica aquí, en otro párrafo breve, qué necesitas conocer durante
+% la operación: si la información aprendida sigue siendo útil para control
+% y cómo actuar cuando deja de serlo. Menciona incertidumbre, calibración
+% y detección fuera de distribución (OOD) como herramientas candidatas;
+% no las equipares automáticamente con validez ni presupongas que combinarlas
+% funcionará mejor. Las definiciones y distinciones formales van en el
+% capítulo 4; la señal de validez y su integración, en el capítulo 6.
+%
+% Formular el problema central aproximadamente como:
+%
+% Un modelo híbrido de dinámica vehicular puede ofrecer mejores
+% predicciones que un modelo físico nominal dentro del dominio
+% representado por los datos. Sin embargo, cuando cambian las
+% condiciones de operación o parámetros físicos, el residual aprendido puede dejar de
+% representar correctamente el model mismatch. El problema no es
+% únicamente detectar una muestra OOD, sino estimar si la información
+% aprendida continúa siendo suficientemente válida para que un
+% controlador la utilice y definir cómo debe reaccionar el control
+% cuando esa validez disminuye.
+%
+% Definir explícitamente que la tesis estudia:
+%
+% (1) runtime validity characterization;
+% (2) control-relevant validity estimation;
+% (3) validity-aware control reaction.
+
+\section{Alcance del problema (prioridad 1)}
+
+% PASO 10. Di aquí qué parte concreta del problema aborda la tesis:
+% dinámica vehicular, modelo físico con residual aprendido y uso de la
+% estimación de validez por un MPC/NMPC. Incluye como familias de estudio
+% fricción, masa/carga, rigidez lateral de los neumáticos y operación fuera
+% del rango de entrenamiento. La fricción no tiene prioridad por defecto.
+% Distingue parámetros medidos, estimados y no disponibles para el control.
+% Selecciona escenarios representativos de cada familia en la metodología;
+% no prometas cubrir todas sus combinaciones ni estimar todos los parámetros.
+% Resume el alcance en uno o dos párrafos; los objetivos enumerados van
+% en el capítulo 2 y el protocolo de evaluación en el capítulo 7.
+% Aclara brevemente los límites ya indicados debajo, especialmente que
+% la visibilidad del relato no convierte la percepción en objeto de estudio.
+% Presenta CBF y reentrenamiento solo como extensiones opcionales, sin
+% desarrollarlos aquí. No prometas seguridad o estabilidad formal.
+%
+% Dominio principal:
+% - dinámica vehicular;
+% - modelo híbrido physics + learned residual;
+% - MPC/NMPC como controlador receptor.
+%
+% Fuera del núcleo de la tesis, salvo conexión directa:
+% - percepción;
+% - detección de objetos;
+% - planificación global;
+% - predicción de otros agentes;
+% - assurance del stack completo de autonomía.
+%
+% CBF: extensión opcional, no elemento obligatorio para validar
+% la hipótesis principal.
+%
+% DAgger/reentrenamiento online: extensión opcional si el calendario
+% permite estudiarlo y si la degradación observada se asocia
+% principalmente a incertidumbre epistémica.
+
+\section{Brecha de investigación}
+
+% PASO 11. Redacta aquí una síntesis breve de la revisión del capítulo 5:
+% qué resuelven los trabajos más cercanos, bajo qué condiciones y qué
+% limitación concreta motiva esta investigación. Cita las referencias que
+% sostengan cada límite; evita una lista de autores o una tabla comparativa.
+% Hasta terminar esa revisión, conserva la brecha como provisional.
+% El párrafo debe conectar validez del residual, reacción del controlador
+% y efecto en lazo cerrado; combinar herramientas no basta como brecha.
+%
+% Esta sección se redactará después de cerrar la revisión bibliográfica.
+%
+% Regla de seguridad:
+% NO afirmar ``nadie combina OOD y uncertainty''.
+%
+% La brecha debe construirse como una limitación en el cierre del ciclo:
+%
+% learned vehicle dynamics
+% -> runtime validity
+% -> control decision
+% -> closed-loop behavior.
+%
+% Formulación provisional segura:
+%
+% Los modelos aprendidos son utilizados para proporcionar información
+% relevante para control en aplicaciones de dinámica vehicular, y
+% existen mecanismos de uncertainty estimation, OOD detection,
+% robust/adaptive control y runtime monitoring. Sin embargo, la tesis
+% investiga específicamente cómo caracterizar la validez runtime de un
+% residual aprendido bajo shifts vehiculares físicamente interpretables
+% y cómo traducir esa caracterización en modificaciones explícitas de
+% un MPC/NMPC, evaluando el efecto sobre el desempeño closed-loop.
+%
+% Sustituir esta formulación por una versión sustentada en literatura
+% una vez completada la tabla maestra del estado del arte.
+
+\section{Pregunta de investigación}
+
+% PASO 12. Presenta aquí la pregunta central que se desprende de la brecha.
+% Usa la formulación existente como eje y comprueba que coincida con el
+% alcance anterior. No la respondas todavía ni anticipes resultados.
+%
+\begin{quote}
+\textbf{¿Cómo puede estimarse la validez de un residual aprendido de
+dinámica vehicular durante la operación y utilizarse para adaptar un
+controlador MPC/NMPC bajo condiciones de operación no representadas
+durante el entrenamiento?}
+\end{quote}
+
+% Esta versión incorpora las decisiones D1--D7 sin comprometer todavía
+% una técnica concreta de fusión ni una garantía formal de estabilidad.
+% Interpretar las condiciones de operación de la pregunta como condiciones
+% externas, parámetros del vehículo y rangos de estado/entrada. Comprobar
+% que la redacción final no limite el problema a cambios de superficie.
+
+\section{Preguntas específicas de investigación}
+
+% PASO 13. Usa las preguntas siguientes para descomponer la pregunta
+% central: condiciones que degradan el residual -> información para estimar
+% validez -> reacción del control -> comparación en lazo cerrado.
+% Revisa su coherencia sin convertirlas en tareas de implementación ni
+% repetir los objetivos del capítulo 2. Mantén explícitamente opcional la
+% última pregunta. La construcción de C_k y la regla de adaptación del
+% horizonte se desarrollan en el capítulo 6 y se evalúan en el 7.
+%
+\begin{enumerate}[label=\textbf{PI\arabic*:}]
+    \item ¿Qué tipos de cambios físicamente relevantes en la dinámica
+    vehicular provocan una pérdida significativa de validez del residual
+    aprendido?
+
+    \item ¿Qué información aportan la incertidumbre epistémica, la
+    incertidumbre aleatoria, la calibración y un indicador de condiciones fuera
+    de distribución (OOD, por sus siglas en inglés) sobre el error del
+    modelo relevante para el control?
+
+    \item ¿En qué medida las señales de incertidumbre, calibración y OOD
+    son complementarias o redundantes al caracterizar la validez durante
+    la operación?
+
+    \item ¿Cómo puede construirse una señal de confianza/validez
+    \[C_k=g(U_{\mathrm{epi}},U_{\mathrm{ale}},\mathrm{Cal},
+    \mathrm{OOD})\]
+    que refleje el error relevante para el controlador?
+
+    \item ¿Cómo debe utilizarse \(C_k\) para adaptar el horizonte de
+    MPC/NMPC y reducir la degradación del desempeño en lazo cerrado
+    cuando disminuye la validez del modelo aprendido?
+
+    \item ¿Qué mejora ofrece la arquitectura propuesta frente a un
+    controlador basado solo en el modelo físico, un controlador que
+    utiliza el modelo aprendido sin supervisar su validez y arquitecturas
+    que utilizan únicamente información de validez o de OOD?
+
+    \item Como extensión opcional, ¿puede utilizarse la información de
+    validez para modificar la acción de una función de barrera de control
+    (CBF, por sus siglas en inglés) o activar estrategias de actualización
+    de datos o del modelo en respuesta a la incertidumbre epistémica?
+\end{enumerate}
+
+\section{Hipótesis de investigación}
+
+% PASO 14. Presenta aquí la respuesta tentativa que pondrás a prueba.
+% La hipótesis existente debe expresar la relación esperada entre estimar
+% validez, adaptar el control y reducir la degradación; no una mejora ya
+% demostrada. No fijes aquí si el horizonte debe aumentar o disminuir,
+% ni detalles del ensemble, umbrales, métricas o escenarios experimentales.
+% La metodología va en el capítulo 7, la evidencia disponible en el 8
+% y las contribuciones esperadas en el 9.
+%
+\begin{quote}
+\textbf{Una combinación calibrada de incertidumbre epistémica,
+incertidumbre aleatoria y evidencia de operación fuera de distribución
+puede proporcionar una estimación útil de la validez de un residual
+aprendido de dinámica vehicular durante la operación. Incorporar esta
+estimación a la adaptación de un controlador MPC/NMPC puede reducir la
+degradación del desempeño en lazo cerrado ante cambios de régimen,
+en comparación con arquitecturas que utilizan el modelo aprendido sin
+considerar su validez.}
+\end{quote}
+
+% Esta hipótesis debe presentarse como algo a validar, no como resultado.
+% Si la revisión muestra que conviene mantener uncertainty y OOD como
+% señales separadas, reformular la parte de ``combinación'' sin alterar
+% el problema científico central.
+
+% PASO 15. Cierra la introducción con un párrafo breve que oriente la
+% lectura del documento: objetivos (cap. 2), fundamentos y validez
+% (caps. 3--4), estado del arte (cap. 5), propuesta y metodología
+% (caps. 6--7), resultados preliminares y contribuciones esperadas
+% (caps. 8--9), plan de trabajo, limitaciones y cierre (caps. 10--12).
+% Basta indicar la función de esos bloques; no resumas su contenido.
+% Revisión final: cada párrafo debe acercar al lector al problema central.
+% La historia ocupa solo el paso 3; el resto explica por qué vale la pena
+% estudiar la validez de información aprendida para control vehicular.
+
+
+% ============================================================
+% CAPÍTULO 2
+% ============================================================
+
+\chapter{Objetivos}
+
+\section{Objetivo general}
+
+Desarrollar y evaluar una metodología de estimación de validez en tiempo
+real para un modelo híbrido de dinámica vehicular compuesto por un modelo
+físico y un residual aprendido, e integrar esta estimación en un
+controlador MPC/NMPC para reducir la degradación del desempeño en lazo
+cerrado bajo condiciones de operación no representadas durante el
+entrenamiento.
+
+\section{Objetivos específicos}
+
+% Al revisar los objetivos, representar fricción, masa/carga y rigidez
+% lateral dentro de los cambios físicos estudiados, y distinguirlos de
+% la extrapolación de estados/entradas. No hacer de la identificación
+% paramétrica un objetivo obligatorio de la estimación de validez.
+
+\begin{enumerate}[label=\textbf{OE\arabic*:}]
+    \item Formular una arquitectura híbrida de dinámica vehicular
+    compuesta por un modelo físico orientado al control y un residual
+    aprendido.
+
+    \item Definir de forma operativa los tipos de cambio y las situaciones
+    fuera de distribución relevantes para el estudio, distinguiendo al
+    menos los regímenes físicos no representados y la dinámica fuera de
+    distribución, e incluyendo las entradas fuera de distribución si el
+    tiempo lo permite.
+
+    \item Estimar y calibrar la incertidumbre aleatoria y epistémica del
+    modelo aprendido mediante un modelo heterocedástico y un conjunto
+    reducido de modelos, complementados con un indicador OOD de bajo
+    costo computacional.
+
+    \item Caracterizar experimentalmente las relaciones entre cambio de
+    distribución, incertidumbre, calibración, OOD, error de predicción y
+    error relevante para el control.
+
+    \item Definir una representación de confianza/validez durante la
+    operación
+    \[C_k=g(U_{\mathrm{epi}},U_{\mathrm{ale}},\mathrm{Cal},
+    \mathrm{OOD})\]
+    y evaluar su capacidad para anticipar o representar la degradación
+    del modelo de forma útil para el controlador.
+
+    \item Integrar la señal de validez en un controlador MPC/NMPC mediante
+    la adaptación del horizonte y evaluar su efecto en el desempeño en
+    lazo cerrado y la robustez empírica.
+
+    \item Comparar el enfoque propuesto con arquitecturas de referencia
+    que permitan aislar los efectos del modelo aprendido, la estimación
+    de validez y la detección fuera de distribución.
+
+    \item Como extensión, si el calendario lo permite, evaluar el uso de
+    la señal de validez en una CBF y/o en una estrategia de adquisición de
+    datos y reentrenamiento basada en DAgger para condiciones asociadas
+    con la incertidumbre epistémica.
+\end{enumerate}
+
+
+% ============================================================
+% CAPÍTULO 3
+% ============================================================
+
+\chapter{Fundamentos de dinámica vehicular y control}
+
+% Este capítulo sustituye la fundamentación genérica sobre ``sistemas
+% dinámicos'' e ``IA'' del documento anterior. Debe contener solamente
+% los fundamentos necesarios para comprender el problema doctoral.
+
+\section{Dinámica vehicular relevante para el control}
+
+% Incluir únicamente lo necesario:
+% - estados dinámicos seleccionados;
+% - entradas de control;
+% - dinámica longitudinal/lateral/yaw según el modelo elegido;
+% - interacción neumático--carretera;
+% - papel de masa/carga, rigidez lateral, \mu y régimen de operación;
+% - diferencia entre capacidad de adherencia y rigidez lateral del neumático;
+% - parámetros reales, nominales y estimados, y su disponibilidad runtime;
+% - regiones cercanas a saturación/handling limits si se estudian.
+%
+% Conectar siempre con el problema de cambio de régimen y model mismatch.
+
+\section{Modelos orientados al control y discrepancias del modelo}
+
+% Explicar:
+% - por qué se utilizan modelos físicos simplificados en control;
+% - fuentes de discrepancia modelo--planta;
+% - efecto de parámetros desconocidos/variables;
+% - por qué un residual aprendido puede ser útil;
+% - por qué ese residual puede perder validez fuera del dominio de datos.
+% Separar el efecto de parámetros desconocidos del de variaciones respecto
+% al entrenamiento. Un valor desconocido pero representado en los datos
+% no constituye por sí solo un shift ni una pérdida de validez.
+
+\section{Modelos híbridos: física y residuales aprendidos}
+
+% Definir formalmente una arquitectura del tipo:
+%
+% x_{k+1} = f_{phys}(x_k,u_k) + r_\theta(x_k,u_k) + w_k
+%
+% donde r_theta aprende la discrepancia residual.
+%
+% Precisar posteriormente:
+% - variables de entrada;
+% - salida residual;
+% - horizonte de uso;
+% - frecuencia de actualización;
+% - hipótesis del modelo físico.
+% Explicitar qué parámetros se mantienen nominales, cuáles se actualizan
+% y cuáles no se observan. Separar verdad de referencia del simulador e
+% información disponible para el modelo y el controlador.
+%
+% No convertir esta sección en una comparación exhaustiva de algoritmos ML.
+
+\section{Control predictivo basado en modelos}
+
+% Presentar MPC/NMPC solo al nivel necesario para la tesis:
+% - modelo de predicción;
+% - horizonte;
+% - función de costo;
+% - restricciones;
+% - receding horizon;
+% - sensibilidad a errores de modelo.
+%
+% Introducir el horizonte N como principal variable de adaptación
+% propuesta. No fijar todavía si C bajo implica aumentar o disminuir N:
+% esta relación debe justificarse en la metodología/experimentos.
+
+\section{Funciones de barrera de control como extensión opcional}
+
+% Sección breve y explícitamente secundaria.
+%
+% Explicar:
+% - papel de una CBF como safety filter;
+% - parámetro(s) que determinan la agresividad/conservadurismo;
+% - cómo C_k podría modular dichos parámetros.
+%
+% No prometer garantía formal de seguridad hasta demostrar que la
+% arquitectura y los supuestos permiten esa afirmación.
+
+
+% ============================================================
+% CAPÍTULO 4
+% ============================================================
+
+\chapter{Información aprendida y validez durante la operación}
+
+\section{Información aprendida relevante para el controlador}
+
+% La información aprendida principal de la tesis NO es una taxonomía
+% genérica de salidas de IA. Es el residual/model mismatch incorporado
+% al modelo de predicción del controlador.
+%
+% Situar otros roles funcionales de modelos aprendidos solo como contexto
+% bibliográfico: full learned dynamics, learned tire/force models,
+% estimadores de parámetros, etc.
+
+\section{Incertidumbre predictiva}
+
+\subsection{Incertidumbre aleatoria}
+
+% Definición, interpretación y papel dentro del modelo heteroscedástico.
+% Relacionar con ruido/variabilidad no reducible bajo los supuestos del
+% modelo, evitando equipararla automáticamente con invalidity.
+
+\subsection{Incertidumbre epistémica}
+
+% Definición e interpretación como incertidumbre asociada al conocimiento
+% del modelo/datos. Introducir el small ensemble como mecanismo candidato.
+% Relacionarla con regiones poco representadas, pero no afirmar que
+% epistemic uncertainty sea equivalente a OOD.
+
+\subsection{Calibración}
+
+% Explicar por qué no basta con producir una varianza: la incertidumbre
+% debe contrastarse con la frecuencia/magnitud real de los errores.
+% Definir las métricas de calibration que finalmente se utilicen.
+
+\section{Detección fuera de distribución y cambios de distribución en la dinámica vehicular}
+
+% Separar explícitamente las categorías operacionales elegidas.
+
+\subsection{Régimen físico no representado}
+
+% Caso principal: cambios de parámetros/condiciones físicas no presentes
+% durante entrenamiento: variaciones de fricción, masa/carga o rigidez
+% lateral. Definir para cada caso el dominio de entrenamiento y la
+% información disponible; no equiparar parámetro desconocido con OOD.
+
+\subsection{Dinámica fuera de distribución}
+
+% Regiones de estado/dinámica nunca vistas o insuficientemente cubiertas
+% durante entrenamiento. Ejemplo de escenario: V_x > V_{x,\max}^{train}
+% o regiones dinámicas no representadas.
+% Aclarar el posible solapamiento con cambios físicos: un cambio de masa
+% o neumáticos puede alterar la dinámica aun con estados/entradas familiares.
+% Definir categorías y etiquetas experimentales sin asumir que un detector
+% basado solo en entradas identificará todos esos cambios.
+
+\subsection{Entradas fuera de distribución}
+
+% Extensión opcional si el cronograma lo permite. Definir qué entradas
+% del modelo constituyen input OOD y cómo se distingue de dynamics OOD.
+
+\subsection{Fallo o degradación de sensores}
+
+% Escenario opcional. Incluir solo si se demuestra que produce una
+% alteración relevante en la información consumida por el modelo/control.
+% No mezclar automáticamente sensor fault con dynamics OOD.
+
+\section{Validez y confianza durante la operación}
+
+% Sección central del marco conceptual.
+%
+% Establecer explícitamente:
+%
+% uncertainty != OOD != validity.
+%
+% Proponer una señal de trabajo:
+\begin{equation}
+C_k = g\!\left(
+U_{\mathrm{epi},k},
+U_{\mathrm{ale},k},
+\mathrm{Cal}_k,
+S_{\mathrm{OOD},k}
+\right),
+\end{equation}
+%
+% donde C_k no se define como ``probabilidad de estar correcto'' salvo
+% que posteriormente exista una calibración que justifique esa lectura.
+%
+% La señal debe evaluarse por su relación con error relevante para
+% control, no solo por AUROC de detección.
+% Evaluar si detecta degradación sin conocer el parámetro que la causa;
+% no interpretar C_k como una estimación de fricción, masa o rigidez lateral.
+
+\section{Validez relevante para el control}
+
+% Diferenciar:
+% - error estadístico del predictor;
+% - error dinámico acumulado/multi-step;
+% - error que altera la optimización del MPC/NMPC;
+% - degradación closed-loop.
+%
+% Esta sección es una de las claves para demostrar profundidad doctoral.
+
+
+% ============================================================
+% CAPÍTULO 5
+% ============================================================
+
+\chapter{Estado del arte}
+
+\section{Estrategia de revisión bibliográfica}
+
+% Documentar:
+% - bases de datos;
+% - período;
+% - strings de búsqueda;
+% - criterios de inclusión/exclusión;
+% - proceso de selección;
+% - uso de reviews para terminología y de primarios para evidencia;
+% - tabla maestra de papers cercanos.
+%
+% Mantener separada la evidencia bibliográfica de las decisiones propias.
+% Cubrir fricción, masa/carga y parámetros de neumáticos en las búsquedas;
+% no restringirlas a road adhesion ni a estimación de fricción.
+% Extraer qué parámetros varían, cuáles conoce/estima el controlador y
+% qué rangos se usan para entrenamiento y validación.
+
+\section{Modelos aprendidos e híbridos para el control de la dinámica vehicular}
+
+% Organizar por rol funcional, no por algoritmo:
+% 1. full learned dynamics;
+% 2. hybrid physics + learning;
+% 3. residual/model-mismatch learning;
+% 4. learned tire/force/parameter models.
+%
+% Para cada familia responder:
+% ¿qué información produce el modelo y cómo modifica el controlador?
+% Distinguir aprendizaje del residual e identificación de parámetros;
+% registrar cómo se evalúan cambios de masa, neumáticos y superficie.
+
+\section{Dinámica aprendida con consideración de la incertidumbre para el control}
+
+% Revisar trabajos con:
+% - epistemic/aleatoric/predictive uncertainty;
+% - calibration;
+% - MPC/NMPC con learned models;
+% - mecanismos robust/adaptive/stochastic relacionados.
+%
+% Extraer no solo técnica UQ sino cómo la incertidumbre afecta control.
+
+\section{Detección fuera de distribución, cambios de distribución y supervisión durante la operación}
+
+% Revisar:
+% - OOD detection for dynamics models;
+% - distribution shift;
+% - residual/change detection;
+% - temporal shifts;
+% - runtime monitors en robotics/CPS cuando el mecanismo sea transferible.
+%
+% Distinguir detector de shift de estimador de validez.
+
+\section{Control con consideración de la validez y la confianza}
+
+% Buscar explícitamente trabajos donde una señal de confianza/validez:
+% - cambie autoridad del learned model;
+% - modifique restricciones/pesos/horizonte;
+% - active fallback;
+% - aumente robustificación;
+% - module safety filters.
+%
+% Esta sección debe contener los trabajos que más amenazan/apoyan la
+% contribución doctoral.
+
+\section{Síntesis crítica y brecha de investigación}
+
+% Construir una tabla comparativa con columnas equivalentes a:
+%
+% Referencia | Dominio | Learned information | Modelo AI | Controlador |
+% Uncertainty | OOD | Definición de validity | Shift | Cómo validity
+% modifica control | Closed-loop property | Guarantee | Validation |
+% Real-time | Limitación | Aporte a la tesis.
+% Detallar Shift por parámetro/condición, información disponible y rango
+% de entrenamiento. Distinguir validación aislada de cambios combinados;
+% no extrapolar resultados de fricción a masa o rigidez sin evidencia.
+%
+% La síntesis debe responder:
+%
+% qué existe -> qué resuelve -> qué limitaciones deja.
+%
+% Solo después de esta síntesis congelar la formulación final del gap.
+
+
+% ============================================================
+% CAPÍTULO 6
+% ============================================================
+
+\chapter{Marco conceptual y arquitectura propuesta}
+
+\section{La cadena cambio--validez--control}
+
+% Figura conceptual recomendada:
+%
+% operating-condition or vehicle-parameter shift
+% -> learned residual
+% -> {prediction, U_epi, U_ale, calibration, OOD}
+% -> C_k
+% -> MPC/NMPC adaptation
+% -> u_k
+% -> vehicle
+% -> closed-loop metrics.
+
+\section{Modelo híbrido de predicción}
+
+% Presentar formalmente la combinación physics + learned residual.
+% La implementación concreta se detallará después, pero aquí debe quedar
+% claro qué información consume el MPC/NMPC.
+% Representar parámetros físicos reales y nominales/estimados por separado.
+% No suministrar a la arquitectura valores de masa, rigidez o fricción
+% que el protocolo declara desconocidos; reservarlos para evaluación/oracle.
+
+\section{Estimador de validez}
+
+% Arquitectura conceptual:
+% - heteroscedastic model -> aleatoric uncertainty;
+% - small ensemble -> epistemic uncertainty;
+% - calibration layer/assessment;
+% - cheap OOD score;
+% - fusión/representación C_k.
+%
+% La función g puede ser heurística, aprendida o basada en calibración,
+% pero la selección debe justificarse por su relación con control error.
+% Estudiar sensibilidad a distintos cambios físicos y sus combinaciones,
+% sin exigir que C_k identifique cuál parámetro cambió.
+
+\section{Integración con MPC/NMPC}
+
+% Decisión D6 principal:
+% C_k -> adaptación del horizonte del MPC/NMPC.
+%
+% Definir en esta sección, cuando se cierre el diseño:
+% - variable adaptada: N_k;
+% - límites N_min, N_max;
+% - regla N_k = h(C_k);
+% - suavizado/histeresis si fuese necesario;
+% - implicaciones computacionales;
+% - comportamiento ante C no disponible/no confiable.
+%
+% No asumir a priori la dirección óptima de la adaptación.
+
+\section{Extensiones opcionales}
+
+\subsection{Modulación de una función de barrera de control (CBF)}
+
+% Si se implementa:
+% C_k -> parámetro de agresividad/conservadurismo de la CBF.
+% Especificar posteriormente qué parámetro se modifica y qué propiedad
+% se pretende preservar/evaluar.
+
+\subsection{Adquisición de datos y reentrenamiento}
+
+% Si el tiempo lo permite y la incertidumbre dominante es epistémica:
+% - utilizar eventos de baja validez para recolectar datos;
+% - estudiar DAgger o estrategia equivalente;
+% - evaluar offline/online según viabilidad y seguridad.
+%
+% Esta extensión NO es necesaria para validar la contribución principal.
+
+
+% ============================================================
+% CAPÍTULO 7
+% ============================================================
+
+\chapter{Metodología de investigación y validación (prioridad 1)}
+
+\section{Estrategia general}
+
+\begin{enumerate}[label=\textbf{E\arabic*:}]
+    \item Establecer el modelo físico orientado al control y el
+    controlador MPC/NMPC de referencia.
+
+    \item Entrenar el residual aprendido y cuantificar su mejora y sus
+    limitaciones respecto al modelo físico dentro del dominio nominal.
+
+    \item Implementar la estimación de incertidumbre aleatoria y
+    epistémica, la calibración y una puntuación OOD de bajo costo
+    computacional.
+
+    \item Diseñar cambios físicamente interpretables en la dinámica
+    vehicular y caracterizar sus efectos sobre la predicción, la
+    incertidumbre, OOD y la validez.
+
+    \item Construir y validar la señal \(C_k\) frente al error relevante
+    para el control.
+
+    \item Integrar \(C_k\) en la adaptación de MPC/NMPC.
+
+    \item Comparar las arquitecturas de referencia y el enfoque propuesto
+    bajo condiciones nominales y fuera de distribución.
+
+    \item Evaluar la robustez empírica y, si el avance lo permite,
+    incorporar las extensiones con CBF y/o DAgger.
+\end{enumerate}
+
+\section{Escenarios de cambio de distribución}
+
+% D7 actualizado: incluir fricción, masa/carga y rigidez lateral de
+% neumáticos como familias de cambios físicos, además de extrapolación
+% del rango de operación. No reducir la campaña a cambios de fricción.
+% Para cada familia definir: rango de entrenamiento, rango de evaluación,
+% magnitud y evolución temporal del cambio, variables observadas/estimadas
+% y verdad de referencia disponible solo para análisis.
+% Comparar primero cambios aislados; seleccionar después combinaciones
+% físicamente coherentes. No confundir reparto de carga con masa total ni
+% forzar independencia entre parámetros que el modelo acopla.
+% Incluir cambios dentro del dominio como contraste: no todo cambio físico
+% es OOD y no todo OOD produce degradación relevante para control.
+
+\subsection{Cambio desconocido de fricción}
+
+% Una de las familias de cambios físicos D7.
+% Comparar variaciones de \mu dentro y fuera del dominio de entrenamiento
+% y evaluar su efecto sobre dinámica, residual y control.
+% Indicar si \mu se supone conocida, estimada o no disponible.
+
+% GUION DE SUBSECCIÓN A DESARROLLAR: Vehicle mass and loading variations.
+% Evaluar cambios de masa/carga entre recorridos; justificar cualquier
+% variación durante un recorrido. Precisar si el modelo representa reparto
+% de carga, centro de gravedad e inercia y cómo se mantiene su coherencia.
+% Separar masa real de masa nominal/estimada utilizada por el controlador.
+
+% GUION DE SUBSECCIÓN A DESARROLLAR: Tire cornering stiffness variations.
+% Definir rigidez lateral delantera/trasera según el modelo elegido,
+% rangos de entrenamiento/evaluación y justificación física de variaciones.
+% Tratarla como parámetro difícil de medir directamente, no como magnitud
+% imposible de estimar. Distinguir rigidez lateral y límite de adherencia.
+% Evaluar el residual sin entregar al controlador el valor real oculto.
+
+\subsection{Ampliación del rango de velocidades}
+
+% Familia de extrapolación del rango de operación D7:
+% V_x > V_{x,\max}^{train}.
+% Definir claramente V_{x,max}^{train} y separar extrapolación de estado
+% de cambios físicos de fricción, masa/carga o rigidez lateral.
+
+\subsection{Fallo o degradación de sensores}
+
+% Escenario opcional D7.
+% Definir tipo de fallo, variable afectada y por qué constituye un shift
+% relevante para el modelo/control. No incluirlo si no puede aislarse
+% experimentalmente.
+
+\subsection{Entradas fuera de distribución}
+
+% Escenario opcional D3.
+% Añadir solo si existe tiempo suficiente y una definición operacional
+% clara diferente de dynamics OOD.
+
+\section{Modelo aprendido e incertidumbre}
+
+% D4:
+% - heteroscedastic model;
+% - small ensemble;
+% - aleatoric + epistemic;
+% - calibration;
+% - cheap OOD score.
+%
+% Reportar costo computacional porque el uso es runtime.
+
+\section{Construcción y evaluación de la señal de validez}
+
+% D5:
+% C = g(U_epi, U_ale, Calibration, OOD).
+%
+% Evaluar al menos:
+% - correlación/asociación con prediction error;
+% - asociación con multi-step/model error relevante para MPC;
+% - capacidad de discriminar regiones de degradación;
+% - sensibilidad a shifts;
+% - redundancia/complementariedad de componentes;
+% - latencia/costo.
+% Desglosar resultados por familia y magnitud de cambio. Examinar casos
+% donde el parámetro cambia sin degradar el modelo y donde el error crece
+% sin una señal OOD clara, especialmente con parámetros no observados.
+
+\section{Uso de la señal de validez en MPC/NMPC}
+
+% D6:
+% - adaptar horizonte MPC/NMPC;
+% - determinar regla h(C) y límites;
+% - evaluar desempeño, factibilidad y costo computacional;
+% - evitar prometer recursive feasibility hasta demostrarla.
+
+\section{Arquitecturas de referencia y estudio de ablación}
+
+% D9. Comparaciones mínimas:
+
+\begin{description}
+    \item[\textbf{B0 -- Solo modelo físico:}]\hfill\\
+    Controlador que utiliza un modelo físico sin residual aprendido.
+
+    \item[\textbf{B1 -- Modelo aprendido sin supervisión de validez:}]\hfill\\
+    Controlador que utiliza un modelo físico y un residual aprendido,
+    sin estimación de validez ni detección fuera de distribución.
+
+    \item[\textbf{B2 -- Solo validez/incertidumbre:}]\hfill\\
+    Controlador que utiliza un modelo aprendido y una señal construida
+    a partir de la incertidumbre y la calibración, sin un componente
+    explícito de detección fuera de distribución.
+
+    \item[\textbf{B3 -- Solo detección fuera de distribución:}]\hfill\\
+    Controlador que utiliza un modelo aprendido y una respuesta basada
+    únicamente en la puntuación OOD, sin estimación probabilística de
+    incertidumbre.
+
+    \item[\textbf{P -- Propuesta:}]\hfill\\
+    Controlador que utiliza un modelo físico, un residual aprendido y la
+    señal \(C_k=g(U_{\mathrm{epi}},U_{\mathrm{ale}},\mathrm{Cal},OOD)\)
+    para adaptar el controlador MPC/NMPC.
+\end{description}
+
+% Si es posible, incluir una comparación ``oracle'' con conocimiento
+% perfecto del shift/error solamente como upper bound experimental,
+% no como baseline obligatorio de la tesis.
+% Mantener iguales sensores e información paramétrica entre comparaciones.
+% Si una arquitectura estima parámetros, declarar ese acceso y su costo;
+% no introducir verdad de referencia en baselines no definidos como oracle.
+
+\section{Métricas de evaluación}
+
+\subsection{Métricas del modelo}
+
+% - RMSE / MAE;
+% - NLL;
+% - multi-step prediction error;
+% - residual error.
+
+\subsection{Métricas de incertidumbre, calibración y detección fuera de distribución}
+
+% - calibration error / coverage según representación elegida;
+% - NLL u otras proper scoring rules;
+% - AUROC / AUPR / FPR@TPR para OOD cuando corresponda;
+% - correlación con error;
+% - detection delay para shifts temporales;
+% - costo computacional.
+
+\subsection{Métricas de desempeño en lazo cerrado}
+
+% Estas son las métricas principales de la tesis:
+% - tracking error;
+% - errores de estados dinámicos relevantes;
+% - constraint violations;
+% - control effort;
+% - feasibility;
+% - recovery after shift;
+% - indicadores de estabilidad/robustez cuando sea válido;
+% - computation time / sampling deadline.
+
+\section{Criterio de robustez empírica}
+
+% D10:
+% Definir una métrica de degradación de costo/desempeño frente a shift.
+% La idea a evaluar será:
+\begin{equation}
+\Delta J_{\mathrm{prop}} < \Delta J_{\mathrm{ref}},
+\end{equation}
+% donde Delta J mide el aumento de costo o degradación respecto a la
+% condición nominal. Definir J y Delta J antes de los experimentos.
+%
+% Esta relación debe tratarse como criterio empírico, no como proof de
+% robustez matemática salvo desarrollo teórico adicional.
+
+\section{Nivel de garantía y alcance de las conclusiones}
+
+% D10:
+% Compromiso principal:
+% - evaluación experimental rigurosa;
+% - robustez empírica.
+%
+% Posible extensión:
+% - probabilistic calibration/bounds, si da tiempo y los supuestos son
+%   defendibles.
+%
+% No prometer todavía:
+% - estabilidad formal;
+% - recursive feasibility;
+% - constraint satisfaction garantizada;
+% - safety formal via CBF.
+%
+% Si alguna de estas propiedades se demuestra durante el doctorado,
+% actualizar el alcance en la versión final de la tesis.
+
+\section{Análisis estadístico y reproducibilidad}
+
+% Definir antes de ejecutar la campaña final:
+% - número de repeticiones/semillas;
+% - intervalos de confianza;
+% - comparación pareada entre arquitecturas;
+% - reporte de fallos/violaciones, no solo promedios;
+% - criterios de éxito/fallo;
+% - costo computacional y deadline de ejecución.
+% Separar resultados por fricción, masa/carga, rigidez lateral y rango
+% operativo; evitar que un promedio oculte fallos en una familia.
+% Documentar particiones de entrenamiento, calibración y prueba para evitar
+% filtración de escenarios o valores paramétricos reservados a evaluación.
+
+
+% ============================================================
+% CAPÍTULO 8
+% ============================================================
+
+\chapter{Resultados preliminares}
+
+% Incluir únicamente evidencia ya obtenida y directamente conectada con
+% la viabilidad de la tesis.
+%
+% Una estructura útil sería:
+
+\section{Viabilidad del aprendizaje de modelos de dinámica vehicular}
+
+% Resultados que muestren que el residual/modelo aprendido puede capturar
+% parte del model mismatch en condiciones nominales.
+
+\section{Comportamiento de la incertidumbre y de los indicadores fuera de distribución ante cambios de distribución}
+
+% Solo si ya existen resultados suficientemente maduros.
+% Presentar casos donde las señales responden o fallan, no solo resultados
+% favorables. Relacionar con D3--D5.
+% Identificar la familia de cambio evaluada y los parámetros conocidos.
+% Si solo hay resultados de fricción, explicitar que aún no sustentan
+% conclusiones sobre masa/carga o rigidez lateral.
+
+\section{Integración preliminar con el control}
+
+% Si existe una implementación cerrada o parcial, mostrar:
+% - arquitectura;
+% - métricas closed-loop;
+% - costo computacional;
+% - limitaciones actuales.
+
+\section{Discusión de los resultados preliminares}
+
+% Separar explícitamente:
+% - evidencia ya demostrada;
+% - indicios;
+% - hipótesis todavía no verificadas;
+% - decisiones metodológicas que los resultados obligan a revisar.
+
+
+% ============================================================
+% CAPÍTULO 9
+% ============================================================
+
+\chapter{Contribuciones esperadas}
+
+% D8. Presentarlas como contribuciones candidatas/esperadas hasta que la
+% evidencia bibliográfica y experimental permita congelarlas.
+
+\section{Estimación de la validez relevante para el control}
+
+% Método/criterio para estimar si el residual aprendido conserva validez
+% suficiente para su uso por el controlador, utilizando uncertainty,
+% calibration y OOD con relación explícita al error relevante para control.
+
+\section{Control vehicular con consideración de la validez}
+
+% Arquitectura que traduzca la estimación de validez en una modificación
+% explícita del MPC/NMPC y demuestre su efecto closed-loop.
+
+\section{Caracterización de la validez durante la operación}
+
+% Caracterización sistemática de cómo diferentes shifts vehiculares
+% afectan residual error, uncertainty, calibration, OOD y comportamiento
+% closed-loop.
+% Cubrir las familias de parámetros y condiciones evaluadas; delimitar
+% las conclusiones a esos rangos y evitar generalizar desde un único caso.
+
+\section{Taxonomía experimental de cambios en la dinámica vehicular}
+
+% Contribución opcional si la campaña experimental alcanza suficiente
+% amplitud y profundidad. No prometerla como contribución principal en la
+% examen de calificación si todavía no existe evidencia suficiente.
+
+\section{Posibles extensiones}
+
+% - modulación validity-aware de CBF;
+% - DAgger/reentrenamiento orientado por incertidumbre epistémica;
+% - probabilistic bounds/calibration más fuertes.
+%
+% Presentarlas como extensiones, no como requisitos para que la tesis sea
+% científicamente completa.
+
+
+% ============================================================
+% CAPÍTULO 10
+% ============================================================
+
+\chapter{Plan de trabajo (prioridad 1)}
+
+\section{Actividades pendientes}
+
+% Relacionar actividades con SO1--SO8.
+%
+% Sugerencia de bloques:
+% A1. cerrar revisión y gap;
+% A2. formalizar modelo physics + residual;
+% A3. consolidar UQ + calibration + OOD;
+% A4. construir C_k;
+% A5. integrar MPC/NMPC adaptive horizon;
+% A6. campaña de fricción, masa/carga, rigidez lateral y rango operativo,
+%     con baselines, cambios aislados y combinaciones seleccionadas;
+% A7. robustez empírica + análisis estadístico;
+% A8. extensiones opcionales;
+% A9. publicaciones;
+% A10. redacción de tesis.
+
+\section{Cronograma}
+
+% Insertar cronograma realista del tiempo restante.
+% Marcar CBF, DAgger, input OOD, sensor fault y probabilistic bounds como
+% actividades opcionales o condicionadas al cumplimiento de hitos
+% principales.
+
+\section{Hitos de decisión}
+
+% H1. gap y pregunta final sustentados bibliográficamente.
+% H2. residual + uncertainty calibrada operando en nominal/OOD.
+% H3. C_k validada respecto a control-relevant error.
+% H4. MPC/NMPC validity-aware comparado contra B0--B3.
+% H5. campaña final y robustez empírica.
+% H5 debe incluir evidencia de las familias físicas previstas, no solo
+% fricción. Si alguna queda sin evaluar, revisar alcance y conclusiones.
+% H6. decisión go/no-go para extensiones CBF/DAgger/bounds.
+
+
+% ============================================================
+% CAPÍTULO 11
+% ============================================================
+
+\chapter{Riesgos, limitaciones y estrategias de mitigación}
+
+\section{Riesgo de redundancia entre incertidumbre y detección fuera de distribución}
+
+% Mitigación:
+% realizar ablaciones B2/B3 y estudiar complementariedad antes de fijar g.
+% Si son redundantes, la contribución puede mantenerse como validity-aware
+% control con la representación mínima que resulte informativa.
+
+\section{Riesgo de calibración inadecuada o de correlación débil con el error}
+
+% Mitigación:
+% evaluar calibración explícitamente y no asumir que variance = validity.
+% Considerar recalibración o representación alternativa de C.
+
+\section{Riesgo de que la adaptación del horizonte no mejore el desempeño en lazo cerrado}
+
+% Mitigación:
+% formularlo como hipótesis experimental; comparar reglas h(C), límites y
+% condiciones de aplicación. La contribución debe incluir resultados
+% negativos o condiciones de validez si son científicamente relevantes.
+
+\section{Riesgo computacional}
+
+% Mitigación:
+% small ensemble + cheap OOD score; medir inference/optimization time y
+% sampling deadline. Reducir complejidad si runtime no es viable.
+
+\section{Riesgo de ampliación del alcance}
+
+% Mitigación:
+% núcleo obligatorio: physics+residual + UQ/calibration/OOD + C + MPC/NMPC
+% + baselines + shifts principales.
+% Mantener fricción, masa/carga y rigidez lateral en el núcleo del estudio;
+% acotar rangos, maniobras y combinaciones para hacer viable la campaña.
+% La identificación de todos los parámetros no es requisito del método.
+% Opcional: CBF, DAgger, input OOD, sensor fault, probabilistic bounds.
+
+\section{Limitaciones de las garantías formales}
+
+% La tesis se compromete inicialmente con evaluación experimental rigurosa
+% y robustez empírica. Explicitar que esto no equivale a estabilidad o
+% seguridad formal.
+
+
+% ============================================================
+% CAPÍTULO 12
+% ============================================================
+
+\chapter{Conclusiones del examen de calificación}
+
+% No son conclusiones finales de la tesis.
+%
+% Resumir:
+% 1. problema: pérdida de validez runtime de residual aprendido;
+% 2. gap sustentado por la revisión;
+% 3. pregunta e hipótesis;
+% 4. arquitectura physics+residual + validity estimator + MPC/NMPC;
+% 5. familias de cambios físicos y operativos estudiadas, distinguiendo
+%    fricción, masa/carga, rigidez lateral y extrapolación de estados;
+% 6. estrategia experimental y baselines;
+% 7. evidencia preliminar disponible;
+% 8. contribuciones esperadas;
+% 9. límites del alcance y extensiones opcionales.
+
+
+% ============================================================
+% REFERENCIAS
+% ============================================================
+
+\bibliographystyle{plain}
+\bibliography{referencias}
+
+\end{document}
