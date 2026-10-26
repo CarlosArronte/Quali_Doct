@@ -271,15 +271,28 @@ El reto de investigación consiste en evaluar durante la operación si el residu
 % puede seguir usando el residual aunque su validez haya disminuido, y
 % esa discrepancia puede perjudicar las decisiones y el desempeño en lazo
 % cerrado. No repitas el recorrido histórico ni toda la motivación.
-Para ilustrar el problema de nvestigacion se presenta una estructura de control donde un MPC utiliza un modelo híbrido compuesto por la unión de un modelo de bicicleta con un modelo residual entrenado. El objetivo es que el modelo residual reduzca el error del modelo de bicicleta frente al modelo de Carsim. 
+Para concretar el problema de investigación, se presenta una estructura de control en la que un MPC utiliza un modelo híbrido compuesto por un modelo de bicicleta y una corrección residual aprendida. Su construcción parte de un modelo físico nominal y utiliza datos de CarSim para entrenar un residual que reduzca las discrepancias entre las predicciones del modelo de bicicleta y la respuesta de esta planta de referencia. A continuación, se describe el papel de cada componente, la obtención de los datos y la integración de la corrección en la predicción utilizada por el controlador.
+
+\subsection{Planta de referencia y modelo interno del controlador}
 
 El uso de formulaciones de alta fidelidad, como las de software comercial tipo CarSim o Adams, garantiza una representación detallada de suspensiones y acoplamientos tridimensionales \cite{Watanabe2026THE, Yun2023Dynamic,Dai2022RealTime}. Sin embargo, estas formulaciones no lineales son costosas y sufren problemas de identificabilidad cuando los datos son escasos \cite{Unsal2025Bridging}.
 
-Además CarSim no se utiliza como un modelo automotriz embarcado (on-board) dentro de las unidades de control electrónico (ECU) de producción debido a su alta complejidad computacional, arquitectura cerrada y formulación multicuerpo no lineal \cite{Watanabe2026THE,Pariota2020Integrating}. En la ingeniería automotriz, CarSim actúa como una planta de referencia de alta fidelidad ejecutada en computadoras de escritorio o procesadores de tiempo real dedicados para validar controladores externos, pero no como el modelo interno de cálculo en un procesador embarcado \cite{Brugnolli2026Predictive}.
+Además, CarSim no se utiliza como un modelo automotriz embarcado (\textit{on-board}) dentro de las unidades de control electrónico (ECU) de producción debido a su alta complejidad computacional, arquitectura cerrada y formulación multicuerpo no lineal \cite{Watanabe2026THE,Pariota2020Integrating}. En la ingeniería automotriz, CarSim actúa como una planta de referencia de alta fidelidad ejecutada en computadoras de escritorio o procesadores de tiempo real dedicados para validar controladores externos, pero no como el modelo interno de cálculo en un procesador embarcado \cite{Brugnolli2026Predictive}.
+
+Esta distinción define la estructura considerada: CarSim proporciona la respuesta de referencia del vehículo, mientras que el MPC utiliza un modelo de bicicleta como base de su predicción. Sobre esta base se construye posteriormente la corrección residual. La figura~\ref{fig:hybrid_mpc_system} muestra el sistema completo, con la planta CarSim, el controlador MPC y el modelo híbrido que combina la predicción física con la corrección aprendida.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=\linewidth]{imgs/Gemini_MPC.png}
+    \caption{Estructura de control con la planta CarSim y el modelo híbrido B1, formado por el modelo de bicicleta B0 y el residual neuronal.}
+    \label{fig:hybrid_mpc_system}
+\end{figure}
 
 % ============================================================
 % Modelo de bicicleta: estados, ecuaciones y parámetros
 % ============================================================
+
+\subsection{Construcción del modelo de bicicleta nominal B0}
 
 El modelo de bicicleta dinámico lineal representa los movimientos lateral y de guiñada del vehículo, considerando pequeños ángulos de deriva de los neumáticos y velocidad longitudinal constante. Para el seguimiento de trayectoria, este modelo se amplía con los errores lateral y de orientación, dando lugar al vector de estados:
 %
@@ -295,6 +308,15 @@ donde $e_\psi = \psi-\psi_{\mathrm{ref}}$.
 La entrada de control es el ángulo efectivo de dirección de las ruedas
 delanteras, $\delta$, mientras que la curvatura de la trayectoria de referencia,
 $\kappa_{\mathrm{ref}}$, constituye una entrada conocida.
+
+La figura~\ref{fig:bicycle_model} ilustra la representación del vehículo y las variables asociadas al seguimiento de la trayectoria de referencia.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.9\linewidth]{imgs/Gemini_bicicleta.png}
+    \caption{Esquema del modelo de bicicleta y de las variables utilizadas para describir el movimiento lateral y el seguimiento de trayectoria.}
+    \label{fig:bicycle_model}
+\end{figure}
 
 Las ecuaciones del modelo son
 %
@@ -351,7 +373,7 @@ saturación explícita por adherencia.
 % Representación continua en espacio de estados
 % ============================================================
 
-La representación continua en espacio de estados es
+A partir de estas ecuaciones, la representación continua en espacio de estados es
 %
 \begin{equation}
     \dot{\mathbf{x}}
@@ -430,7 +452,7 @@ con
 % Modelo discreto
 % ============================================================
 
-El modelo se discretiza mediante un retenedor de orden cero
+Para utilizarlo en la predicción del MPC, el modelo se discretiza mediante un retenedor de orden cero
 (\textit{zero-order hold}, ZOH), considerando las entradas constantes
 en cada intervalo de muestreo:
 %
@@ -463,11 +485,13 @@ donde
     \label{eq:bicycle_Bd_Ed}
 \end{align}
 
-Las matrices se calculan a la velocidad nominal $V_{x,0}$ y se mantienen constantes durante la simulación. A este  modelo interno lineal compuesto solo por el modelo de bicicleta se le llama B0. 
+Las matrices se calculan a la velocidad nominal $V_{x,0}$ y se mantienen constantes durante la simulación. Este modelo interno lineal, compuesto únicamente por el modelo de bicicleta, se denomina B0 y constituye la base física sobre la que se incorpora la corrección aprendida.
 
 % ============================================================
 % Modelo híbrido: bicicleta y corrección residual B1
 % ============================================================
+
+\subsection{Definición de la corrección residual}
 
 Para complementar la descripción física de B0, se incorpora un
 modelo residual que estima las discrepancias de predicción de la
@@ -503,7 +527,7 @@ $\mathbf{B}_{\mathrm{lat}}\in\mathbb{R}^{2\times1}$ son las
 submatrices de $\mathbf{A}_d$ y $\mathbf{B}_d$ correspondientes
 a los estados $v_y$ y $r$, respectivamente.
 
-El residual utilizado como objetivo de entrenamiento es la diferencia
+Una vez definida la predicción física, el residual utilizado como objetivo de entrenamiento se obtiene como la diferencia
 entre la respuesta de CarSim en el instante siguiente y la predicción
 física a un paso:
 %
@@ -529,7 +553,7 @@ del residual tienen unidades de $\mathrm{m/s}$ y $\mathrm{rad/s}$:
 representan correcciones discretas de los estados, no de sus
 derivadas.
 
-El residual se aproxima mediante una red neuronal de tipo
+Para aproximar este residual, se utiliza una red neuronal de tipo
 \textit{multilayer perceptron} (MLP), cuyo vector de entrada es
 %
 \begin{equation}
@@ -554,6 +578,25 @@ donde $\boldsymbol{\theta}$ agrupa sus pesos y sesgos.
 Aunque la velocidad longitudinal medida forma parte de las
 entradas de la red, las matrices del modelo físico permanecen
 fijas en el punto nominal.
+
+\subsection{Datos y entrenamiento del modelo residual}
+
+Los datos utilizados para ajustar B1 proceden de simulaciones
+en lazo cerrado con el MPC físico B0 y la planta CarSim.
+El dominio nominal comprende las maniobras DLC y DLCT,
+una velocidad de referencia de $60\,\mathrm{km/h}$,
+un coeficiente de adherencia $\mu=1$ y el vehículo
+\textit{C-Class hatchback}. Las muestras se adquieren a
+$50\,\mathrm{Hz}$ y las condiciones externas a este dominio
+se excluyen del ajuste y de la selección del modelo.
+
+La partición se realiza por corrida completa y por tipo de
+maniobra. Para cada maniobra, se reserva una corrida para
+validación y otra para prueba dentro del dominio nominal;
+las restantes se destinan al entrenamiento. De este modo,
+ninguna corrida comparte muestras entre particiones.
+El procedimiento requiere al menos tres corridas por maniobra
+y utiliza la semilla aleatoria 42 para su asignación.
 
 La arquitectura contiene cuatro entradas, dos capas ocultas
 de 64 neuronas con activación ReLU y una capa de salida lineal
@@ -614,24 +657,7 @@ La salida se transforma nuevamente a unidades físicas mediante
     \label{eq:b1_denormalization}
 \end{equation}
 
-Los datos utilizados para ajustar B1 proceden de simulaciones
-en lazo cerrado con el MPC físico B0 y la planta CarSim.
-El dominio nominal comprende las maniobras DLC y DLCT,
-una velocidad de referencia de $60\,\mathrm{km/h}$,
-un coeficiente de adherencia $\mu=1$ y el vehículo
-\textit{C-Class hatchback}. Las muestras se adquieren a
-$50\,\mathrm{Hz}$ y las condiciones externas a este dominio
-se excluyen del ajuste y de la selección del modelo.
-
-La partición se realiza por corrida completa y por tipo de
-maniobra. Para cada maniobra, se reserva una corrida para
-validación y otra para prueba dentro del dominio nominal;
-las restantes se destinan al entrenamiento. De este modo,
-ninguna corrida comparte muestras entre particiones.
-El procedimiento requiere al menos tres corridas por maniobra
-y utiliza la semilla aleatoria 42 para su asignación.
-
-El ajuste se realiza con la función \texttt{fitrnet} de MATLAB,
+Con esta representación y la partición de datos definida, el ajuste se realiza con la función \texttt{fitrnet} de MATLAB,
 evaluando dos candidatos con límites de 100 y 200 iteraciones.
 Se selecciona el candidato que minimiza el RMSE conjunto
 de validación en el espacio estandarizado:
@@ -695,7 +721,9 @@ El conjunto de prueba no interviene en la selección.
     \end{tabular}
 \end{table}
 
-Finalmente, la predicción lateral del modelo híbrido es
+\subsection{Integración del modelo híbrido B1 y validez de la corrección}
+
+Una vez entrenado el residual, la predicción lateral del modelo híbrido se construye sumando la corrección aprendida a la predicción de B0:
 %
 \begin{equation}
     \boxed{
