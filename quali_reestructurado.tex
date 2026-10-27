@@ -267,521 +267,20 @@ El reto de investigación consiste en evaluar durante la operación si el residu
 
 \section{Problema de investigación}
 
-% PASO 8. Formula aquí el problema en un párrafo directo: el controlador
-% puede seguir usando el residual aunque su validez haya disminuido, y
-% esa discrepancia puede perjudicar las decisiones y el desempeño en lazo
-% cerrado. No repitas el recorrido histórico ni toda la motivación.
-Para concretar el problema de investigación, se presenta una estructura de control en la que un MPC utiliza un modelo híbrido compuesto por un modelo de bicicleta y una corrección residual aprendida. Su construcción parte de un modelo físico nominal y utiliza datos de CarSim para entrenar un residual que reduzca las discrepancias entre las predicciones del modelo de bicicleta y la respuesta de esta planta de referencia. A continuación, se describe el papel de cada componente, la obtención de los datos y la integración de la corrección en la predicción utilizada por el controlador.
+El problema se estudia mediante una arquitectura de control que distingue entre la planta de referencia y los modelos internos considerados por el controlador. CarSim representa la respuesta de alta fidelidad del vehículo, mientras que el MPC debe operar con descripciones suficientemente compactas para realizar predicciones y optimizar las acciones de dirección en tiempo de ejecución. El punto de partida es un modelo de bicicleta lineal nominal, denominado B0.
 
-\subsection{Planta de referencia y modelo interno del controlador}
-
-El uso de formulaciones de alta fidelidad, como las de software comercial tipo CarSim o Adams, garantiza una representación detallada de suspensiones y acoplamientos tridimensionales \cite{Watanabe2026THE, Yun2023Dynamic,Dai2022RealTime}. Sin embargo, estas formulaciones no lineales son costosas y sufren problemas de identificabilidad cuando los datos son escasos \cite{Unsal2025Bridging}.
-
-Además, CarSim no se utiliza como un modelo automotriz embarcado (\textit{on-board}) dentro de las unidades de control electrónico (ECU) de producción debido a su alta complejidad computacional, arquitectura cerrada y formulación multicuerpo no lineal \cite{Watanabe2026THE,Pariota2020Integrating}. En la ingeniería automotriz, CarSim actúa como una planta de referencia de alta fidelidad ejecutada en computadoras de escritorio o procesadores de tiempo real dedicados para validar controladores externos, pero no como el modelo interno de cálculo en un procesador embarcado \cite{Brugnolli2026Predictive}.
-
-Esta distinción define la estructura considerada: CarSim proporciona la respuesta de referencia del vehículo, mientras que el MPC utiliza un modelo de bicicleta como base de su predicción. Sobre esta base se construye posteriormente la corrección residual. La figura~\ref{fig:hybrid_mpc_system} muestra el sistema completo, con la planta CarSim, el controlador MPC y el modelo híbrido que combina la predicción física con la corrección aprendida.
+La investigación no se limita al entrenamiento de un único modelo residual. A partir de B0 se construyen y comparan varias configuraciones híbridas y de supervisión, denominadas B1, B2, B3 y B4, con el propósito de analizar distintas formas de aprender, evaluar y utilizar la discrepancia entre el modelo físico y la planta. Como ejemplo básico, B1 conserva la estructura física de B0 e incorpora una corrección residual neuronal aprendida a partir de datos de CarSim. La figura~\ref{fig:hybrid_mpc_system} ilustra esta configuración y resume la relación entre la planta de referencia, el modelo híbrido y el controlador. La descripción y formulación de B0--B4 se analizarán en el Capítulo 3, mientras que sus parámetros, datos y procedimientos de entrenamiento se especificarán en el Capítulo 7.
 
 \begin{figure}[htbp]
     \centering
     \includegraphics[width=\linewidth]{imgs/Gemini_MPC.png}
-    \caption{Estructura de control con la planta CarSim y el modelo híbrido B1, formado por el modelo de bicicleta B0 y el residual neuronal.}
+    \caption{Estructura de control para la configuración B1, utilizada como ejemplo de modelo híbrido formado por el modelo de bicicleta B0 y un residual neuronal.}
     \label{fig:hybrid_mpc_system}
 \end{figure}
 
-% ============================================================
-% Modelo de bicicleta: estados, ecuaciones y parámetros
-% ============================================================
+Dentro del dominio representado por los datos de entrenamiento, los modelos residuales pueden mejorar la precisión de B0. Sin embargo, esa mejora no garantiza que cada corrección conserve su utilidad cuando cambia la distribución de operación. Variaciones de adherencia, masa o carga y rigidez lateral de los neumáticos, así como velocidades no representadas durante el entrenamiento o degradaciones de sensores, pueden modificar las relaciones aprendidas entre el estado, la entrada de dirección y la discrepancia modelo--planta.
 
-\subsection{Construcción del modelo de bicicleta nominal B0}
-
-El modelo de bicicleta dinámico lineal representa los movimientos lateral y de guiñada del vehículo, considerando pequeños ángulos de deriva de los neumáticos y velocidad longitudinal constante. Para el seguimiento de trayectoria, este modelo se amplía con los errores lateral y de orientación, dando lugar al vector de estados:
-%
-\begin{equation}
-    \mathbf{x} =
-    \begin{bmatrix}
-        e_y & e_\psi & v_y & r
-    \end{bmatrix}^{\mathsf{T}},
-    \label{eq:bicycle_states}
-\end{equation}
-%
-donde $e_\psi = \psi-\psi_{\mathrm{ref}}$.
-La entrada de control es el ángulo efectivo de dirección de las ruedas
-delanteras, $\delta$, mientras que la curvatura de la trayectoria de referencia,
-$\kappa_{\mathrm{ref}}$, constituye una entrada conocida.
-
-La figura~\ref{fig:bicycle_model} ilustra la representación del vehículo y las variables asociadas al seguimiento de la trayectoria de referencia.
-
-\begin{figure}[htbp]
-    \centering
-    \includegraphics[width=0.9\linewidth]{imgs/Gemini_bicicleta.png}
-    \caption{Esquema del modelo de bicicleta y de las variables utilizadas para describir el movimiento lateral y el seguimiento de trayectoria.}
-    \label{fig:bicycle_model}
-\end{figure}
-
-Las ecuaciones del modelo son
-%
-\begin{align}
-    \dot{e}_y
-    &= V_{x,0}e_\psi + v_y,
-    \label{eq:bicycle_ey}\\
-    %
-    \dot{e}_\psi
-    &= r - V_{x,0}\kappa_{\mathrm{ref}},
-    \label{eq:bicycle_epsi}\\
-    %
-    \dot{v}_y
-    &= -\frac{C_f+C_r}{mV_{x,0}}v_y
-    + \left(
-        \frac{C_rl_r-C_fl_f}{mV_{x,0}}-V_{x,0}
-      \right)r
-    + \frac{C_f}{m}\delta,
-    \label{eq:bicycle_vy}\\
-    %
-    \dot{r}
-    &= \frac{C_rl_r-C_fl_f}{I_zV_{x,0}}v_y
-    - \frac{C_fl_f^2+C_rl_r^2}{I_zV_{x,0}}r
-    + \frac{C_fl_f}{I_z}\delta.
-    \label{eq:bicycle_r}
-\end{align}
-
-Las rigideces laterales $C_f$ y $C_r$ representan valores equivalentes
-por eje. Las fuerzas laterales se aproximan linealmente, sin
-saturación explícita por adherencia.
-
-\begin{table}[htbp]
-    \centering
-    \caption{Estados y entradas del modelo de bicicleta ampliado.}
-    \label{tab:bicycle_variables}
-    \begin{tabular}{@{}lll@{}}
-        \toprule
-        Símbolo & Descripción & Unidad \\
-        \midrule
-        $e_y$ & Error lateral respecto a la trayectoria & $\mathrm{m}$ \\
-        $e_\psi$ & Error de orientación & $\mathrm{rad}$ \\
-        $v_y$ & Velocidad lateral en el centro de gravedad
-            & $\mathrm{m/s}$ \\
-        $r$ & Velocidad angular de guiñada & $\mathrm{rad/s}$ \\
-        $\delta$ & Ángulo efectivo de dirección delantero
-            & $\mathrm{rad}$ \\
-        $\kappa_{\mathrm{ref}}$ & Curvatura de la trayectoria de referencia
-            & $\mathrm{m}^{-1}$ \\
-        \bottomrule
-    \end{tabular}
-\end{table}
-
-% ============================================================
-% Representación continua en espacio de estados
-% ============================================================
-
-A partir de estas ecuaciones, la representación continua en espacio de estados es
-%
-\begin{equation}
-    \dot{\mathbf{x}}
-    =
-    \mathbf{A}_c\mathbf{x}
-    + \mathbf{B}_c\delta
-    + \mathbf{E}_c\kappa_{\mathrm{ref}},
-    \label{eq:bicycle_continuous}
-\end{equation}
-%
-con
-%
-\begin{equation}
-    \mathbf{A}_c =
-    \begin{bmatrix}
-        0 & V_{x,0} & 1 & 0 \\
-        0 & 0 & 0 & 1 \\
-        0 & 0
-          & -\dfrac{C_f+C_r}{mV_{x,0}}
-          & \dfrac{C_rl_r-C_fl_f}{mV_{x,0}}-V_{x,0} \\
-        0 & 0
-          & \dfrac{C_rl_r-C_fl_f}{I_zV_{x,0}}
-          & -\dfrac{C_fl_f^2+C_rl_r^2}{I_zV_{x,0}}
-    \end{bmatrix},
-    \label{eq:bicycle_Ac}
-\end{equation}
-%
-\begin{equation}
-    \mathbf{B}_c =
-    \begin{bmatrix}
-        0 \\
-        0 \\
-        C_f/m \\
-        C_fl_f/I_z
-    \end{bmatrix},
-    \qquad
-    \mathbf{E}_c =
-    \begin{bmatrix}
-        0 \\
-        -V_{x,0} \\
-        0 \\
-        0
-    \end{bmatrix}.
-    \label{eq:bicycle_Bc_Ec}
-\end{equation}
-
-\begin{table}[htbp]
-    \centering
-    \caption{Parámetros utilizados en el modelo de bicicleta nominal.}
-    \label{tab:bicycle_parameters}
-    \begin{tabular}{@{}llll@{}}
-        \toprule
-        Símbolo & Descripción & Valor & Unidad \\
-        \midrule
-        $m$ & Masa del vehículo
-            & $1501$ & $\mathrm{kg}$ \\
-        $I_z$ & Momento de inercia de guiñada
-            & $2192.089539$ & $\mathrm{kg\,m^2}$ \\
-        $l_f$ & Distancia del CG al eje delantero
-            & $1.049562958$ & $\mathrm{m}$ \\
-        $l_r$ & Distancia del CG al eje trasero
-            & $1.860437042$ & $\mathrm{m}$ \\
-        $C_f$ & Rigidez lateral equivalente del eje delantero
-            & $159055$ & $\mathrm{N/rad}$ \\
-        $C_r$ & Rigidez lateral equivalente del eje trasero
-            & $92776.5$ & $\mathrm{N/rad}$ \\
-        $V_{x,0}$ & Velocidad longitudinal nominal
-            & $60/3.6$ & $\mathrm{m/s}$ \\
-        $T_s$ & Período de muestreo
-            & $0.020$ & $\mathrm{s}$ \\
-        \bottomrule
-    \end{tabular}
-\end{table}
-
-% ============================================================
-% Modelo discreto
-% ============================================================
-
-Para utilizarlo en la predicción del MPC, el modelo se discretiza mediante un retenedor de orden cero
-(\textit{zero-order hold}, ZOH), considerando las entradas constantes
-en cada intervalo de muestreo:
-%
-\begin{equation}
-    \mathbf{x}_{k+1}
-    =
-    \mathbf{A}_d\mathbf{x}_k
-    + \mathbf{B}_d\delta_k
-    + \mathbf{E}_d\kappa_{\mathrm{ref},k},
-    \label{eq:bicycle_discrete}
-\end{equation}
-%
-donde
-%
-\begin{align}
-    \mathbf{A}_d
-    &= \exp\left(\mathbf{A}_cT_s\right),
-    \label{eq:bicycle_Ad}\\
-    %
-    \begin{bmatrix}
-        \mathbf{B}_d & \mathbf{E}_d
-    \end{bmatrix}
-    &=
-    \int_0^{T_s}
-        \exp\left(\mathbf{A}_c\tau\right)
-        \begin{bmatrix}
-            \mathbf{B}_c & \mathbf{E}_c
-        \end{bmatrix}
-    \,\mathrm{d}\tau.
-    \label{eq:bicycle_Bd_Ed}
-\end{align}
-
-Las matrices se calculan a la velocidad nominal $V_{x,0}$ y se mantienen constantes durante la simulación. Este modelo interno lineal, compuesto únicamente por el modelo de bicicleta, se denomina B0 y constituye la base física sobre la que se incorpora la corrección aprendida.
-
-% ============================================================
-% Modelo híbrido: bicicleta y corrección residual B1
-% ============================================================
-
-\subsection{Definición de la corrección residual}
-
-Para complementar la descripción física de B0, se incorpora un
-modelo residual que estima las discrepancias de predicción de la
-velocidad lateral y de la velocidad angular de guiñada. La combinación
-del modelo de bicicleta con esta corrección aprendida se denomina B1.
-Su propósito es representar parte de la dinámica que no queda
-recogida por las aproximaciones del modelo nominal, conservando
-la estructura física como base de la predicción.
-
-Se define el vector de estados laterales como
-%
-\begin{equation}
-    \boldsymbol{\xi}_k =
-    \begin{bmatrix}
-        v_{y,k} \\
-        r_k
-    \end{bmatrix}.
-    \label{eq:b1_lateral_states}
-\end{equation}
-%
-La predicción física de estos estados se obtiene mediante
-%
-\begin{equation}
-    \hat{\boldsymbol{\xi}}^{\mathrm{B0}}_{k+1|k}
-    =
-    \mathbf{A}_{\mathrm{lat}}\boldsymbol{\xi}_k
-    + \mathbf{B}_{\mathrm{lat}}\delta_k,
-    \label{eq:b1_physical_prediction}
-\end{equation}
-%
-donde $\mathbf{A}_{\mathrm{lat}}\in\mathbb{R}^{2\times2}$ y
-$\mathbf{B}_{\mathrm{lat}}\in\mathbb{R}^{2\times1}$ son las
-submatrices de $\mathbf{A}_d$ y $\mathbf{B}_d$ correspondientes
-a los estados $v_y$ y $r$, respectivamente.
-
-Una vez definida la predicción física, el residual utilizado como objetivo de entrenamiento se obtiene como la diferencia
-entre la respuesta de CarSim en el instante siguiente y la predicción
-física a un paso:
-%
-\begin{equation}
-    \mathbf{d}_k
-    =
-    \boldsymbol{\xi}^{\mathrm{CarSim}}_{k+1}
-    -
-    \hat{\boldsymbol{\xi}}^{\mathrm{B0}}_{k+1|k}
-    =
-    \begin{bmatrix}
-        d_{v_y,k} \\
-        d_{r,k}
-    \end{bmatrix}.
-    \label{eq:b1_residual_target}
-\end{equation}
-%
-Ambas respuestas se comparan para la misma transición, utilizando
-el estado inicial y la entrada de dirección correspondientes.
-El intervalo de predicción coincide con el período de muestreo
-del controlador, $T_s=0.02\,\mathrm{s}$. Por tanto, las componentes
-del residual tienen unidades de $\mathrm{m/s}$ y $\mathrm{rad/s}$:
-representan correcciones discretas de los estados, no de sus
-derivadas.
-
-Para aproximar este residual, se utiliza una red neuronal de tipo
-\textit{multilayer perceptron} (MLP), cuyo vector de entrada es
-%
-\begin{equation}
-    \mathbf{z}_k =
-    \begin{bmatrix}
-        V_{x,k} & v_{y,k} & r_k & \delta_k
-    \end{bmatrix}^{\mathsf{T}}.
-    \label{eq:b1_features}
-\end{equation}
-%
-La red proporciona una estimación determinista de las dos
-componentes del residual:
-%
-\begin{equation}
-    \hat{\mathbf{d}}_k
-    =
-    \mathbf{g}_{\boldsymbol{\theta}}(\mathbf{z}_k),
-    \label{eq:b1_residual_mapping}
-\end{equation}
-%
-donde $\boldsymbol{\theta}$ agrupa sus pesos y sesgos.
-Aunque la velocidad longitudinal medida forma parte de las
-entradas de la red, las matrices del modelo físico permanecen
-fijas en el punto nominal.
-
-\subsection{Datos y entrenamiento del modelo residual}
-
-Los datos utilizados para ajustar B1 proceden de simulaciones
-en lazo cerrado con el MPC físico B0 y la planta CarSim.
-El dominio nominal comprende las maniobras DLC y DLCT,
-una velocidad de referencia de $60\,\mathrm{km/h}$,
-un coeficiente de adherencia $\mu=1$ y el vehículo
-\textit{C-Class hatchback}. Las muestras se adquieren a
-$50\,\mathrm{Hz}$ y las condiciones externas a este dominio
-se excluyen del ajuste y de la selección del modelo.
-
-La partición se realiza por corrida completa y por tipo de
-maniobra. Para cada maniobra, se reserva una corrida para
-validación y otra para prueba dentro del dominio nominal;
-las restantes se destinan al entrenamiento. De este modo,
-ninguna corrida comparte muestras entre particiones.
-El procedimiento requiere al menos tres corridas por maniobra
-y utiliza la semilla aleatoria 42 para su asignación.
-
-La arquitectura contiene cuatro entradas, dos capas ocultas
-de 64 neuronas con activación ReLU y una capa de salida lineal
-de dos componentes. Las entradas y los objetivos se estandarizan
-mediante
-%
-\begin{align}
-    \tilde{\mathbf{z}}_k
-    &=
-    \mathbf{S}_z^{-1}
-    \left(\mathbf{z}_k-\boldsymbol{\mu}_z\right),
-    \label{eq:b1_input_normalization}\\
-    %
-    \tilde{\mathbf{d}}_k
-    &=
-    \mathbf{S}_d^{-1}
-    \left(\mathbf{d}_k-\boldsymbol{\mu}_d\right),
-    \label{eq:b1_target_normalization}
-\end{align}
-%
-donde $\boldsymbol{\mu}_z$ y $\boldsymbol{\mu}_d$ son los
-vectores de medias, mientras que $\mathbf{S}_z$ y $\mathbf{S}_d$
-son matrices diagonales con las desviaciones estándar.
-Estas estadísticas se calculan exclusivamente con los datos
-de entrenamiento y se mantienen para validación, prueba e
-inferencia. Los factores de escala inferiores a $10^{-12}$
-se sustituyen por uno.
-
-En el espacio estandarizado, la red se expresa como
-%
-\begin{align}
-    \mathbf{h}_{1,k}
-    &=
-    \rho\left(
-        \mathbf{W}_1\tilde{\mathbf{z}}_k+\mathbf{b}_1
-    \right),\\
-    %
-    \mathbf{h}_{2,k}
-    &=
-    \rho\left(
-        \mathbf{W}_2\mathbf{h}_{1,k}+\mathbf{b}_2
-    \right),\\
-    %
-    \hat{\tilde{\mathbf{d}}}_k
-    &=
-    \mathbf{W}_3\mathbf{h}_{2,k}+\mathbf{b}_3,
-\end{align}
-%
-con $\rho(a)=\max(0,a)$ aplicada componente a componente.
-La salida se transforma nuevamente a unidades físicas mediante
-%
-\begin{equation}
-    \hat{\mathbf{d}}_k
-    =
-    \boldsymbol{\mu}_d
-    +
-    \mathbf{S}_d\hat{\tilde{\mathbf{d}}}_k.
-    \label{eq:b1_denormalization}
-\end{equation}
-
-Con esta representación y la partición de datos definida, el ajuste se realiza con la función \texttt{fitrnet} de MATLAB,
-evaluando dos candidatos con límites de 100 y 200 iteraciones.
-Se selecciona el candidato que minimiza el RMSE conjunto
-de validación en el espacio estandarizado:
-%
-\begin{equation}
-    J_{\mathrm{val}}
-    =
-    \sqrt{
-        \frac{1}{2N_{\mathrm{val}}}
-        \sum_{k\in\mathcal{I}_{\mathrm{val}}}
-        \left\|
-            \tilde{\mathbf{d}}_k
-            -
-            \hat{\tilde{\mathbf{d}}}_k
-        \right\|_2^2
-    },
-    \label{eq:b1_validation_score}
-\end{equation}
-%
-donde $\mathcal{I}_{\mathrm{val}}$ contiene los índices de
-las $N_{\mathrm{val}}$ muestras de validación.
-La estandarización permite combinar ambas componentes sin
-sumar directamente errores expresados en unidades diferentes.
-El conjunto de prueba no interviene en la selección.
-
-\begin{table}[htbp]
-    \centering
-    \caption{Configuración del modelo residual determinista B1.}
-    \label{tab:b1_configuration}
-    \begin{tabular}{@{}lp{0.60\linewidth}@{}}
-        \toprule
-        Elemento & Configuración \\
-        \midrule
-        Planta de adquisición
-            & CarSim, vehículo \textit{C-Class hatchback} \\
-        Controlador de adquisición
-            & MPC físico B0 en lazo cerrado \\
-        Dominio nominal
-            & DLC y DLCT, $60\,\mathrm{km/h}$, $\mu=1$ \\
-        Período de muestreo
-            & $0.02\,\mathrm{s}$ \\
-        Entradas
-            & $V_x$, $v_y$, $r$ y $\delta$ \\
-        Salidas
-            & Residuos de predicción a un paso de $v_y$ y $r$ \\
-        Arquitectura
-            & $4 \rightarrow 64 \rightarrow 64 \rightarrow 2$ \\
-        Activación oculta
-            & ReLU \\
-        Partición de datos
-            & Por corrida completa, separada por maniobra \\
-        Estandarización
-            & Estadísticas calculadas solo con entrenamiento \\
-        Límites de iteración
-            & 100 y 200 \\
-        Criterio de selección
-            & Menor RMSE conjunto estandarizado de validación \\
-        Semilla aleatoria
-            & 42 \\
-        \bottomrule
-    \end{tabular}
-\end{table}
-
-\subsection{Integración del modelo híbrido B1 y validez de la corrección}
-
-Una vez entrenado el residual, la predicción lateral del modelo híbrido se construye sumando la corrección aprendida a la predicción de B0:
-%
-\begin{equation}
-    \boxed{
-    \hat{\boldsymbol{\xi}}^{\mathrm{B1}}_{k+1|k}
-    =
-    \mathbf{A}_{\mathrm{lat}}\boldsymbol{\xi}_k
-    +
-    \mathbf{B}_{\mathrm{lat}}\delta_k
-    +
-    \mathbf{g}_{\boldsymbol{\theta}}(\mathbf{z}_k).
-    }
-    \label{eq:b1_hybrid_prediction}
-\end{equation}
-%
-El residual se suma directamente a la predicción física,
-sin multiplicarlo nuevamente por $T_s$, porque ya representa
-una discrepancia sobre un intervalo de muestreo.
-La evaluación predictiva compara B0 y B1 sobre las mismas
-transiciones del conjunto de prueba mediante el RMSE y el MAE
-de cada estado lateral.
-
-Esta estructura permite formular el problema de investigación:
-el controlador puede continuar utilizando la corrección aprendida
-cuando cambian las condiciones de operación, aunque su validez
-predictiva haya disminuido. Como B1 no proporciona una estimación
-de incertidumbre ni un indicador de validez, su incorporación
-no permite determinar por sí sola cuándo la corrección sigue
-siendo adecuada. Una discrepancia en las predicciones utilizadas
-por el MPC puede afectar la selección de las acciones de control
-y deteriorar el desempeño en lazo cerrado. Por ello, la evaluación
-del residual debe considerar tanto su precisión predictiva
-como las consecuencias de su utilización por el controlador.
-
-% PASO 9. Explica aquí, en otro párrafo breve, qué necesitas conocer durante
-% la operación: si la información aprendida sigue siendo útil para control
-% y cómo actuar cuando deja de serlo. Menciona incertidumbre, calibración
-% y detección fuera de distribución (OOD) como herramientas candidatas;
-% no las equipares automáticamente con validez ni presupongas que combinarlas
-% funcionará mejor. Las definiciones y distinciones formales van en el
-% capítulo 4; la señal de validez y su integración, en el capítulo 6.
-%
-% Formular el problema central aproximadamente como:
-%
-% Un modelo híbrido de dinámica vehicular puede ofrecer mejores
-% predicciones que un modelo físico nominal dentro del dominio
-% representado por los datos. Sin embargo, cuando cambian las
-% condiciones de operación o parámetros físicos, el residual aprendido puede dejar de
-% representar correctamente el model mismatch. El problema no es
-% únicamente detectar una muestra OOD, sino estimar si la información
-% aprendida continúa siendo suficientemente válida para que un
-% controlador la utilice y definir cómo debe reaccionar el control
-% cuando esa validez disminuye.
-%
-% Definir explícitamente que la tesis estudia:
-%
-% (1) runtime validity characterization;
-% (2) control-relevant validity estimation;
-% (3) validity-aware control reaction.
+El problema central surge porque el MPC puede continuar utilizando información aprendida aun cuando su validez predictiva haya disminuido. B1 ilustra el caso elemental: una corrección residual, por sí sola, no informa si sigue siendo confiable para las decisiones de control. El mismo problema debe examinarse en las demás configuraciones B2--B4. Una predicción degradada puede alterar la secuencia de acciones optimizada y deteriorar el desempeño en lazo cerrado. La investigación aborda, en consecuencia, cómo caracterizar durante la operación la validez de los modelos aprendidos, cómo relacionarla con el error relevante para el control y cómo hacer que el MPC reaccione cuando esa validez disminuye.
 
 \section{Alcance del problema (prioridad 1)}
 
@@ -1031,63 +530,319 @@ entrenamiento.
 
 \section{Dinámica vehicular relevante para el control}
 
-% Incluir únicamente lo necesario:
-% - estados dinámicos seleccionados;
-% - entradas de control;
-% - dinámica longitudinal/lateral/yaw según el modelo elegido;
-% - interacción neumático--carretera;
-% - papel de masa/carga, rigidez lateral, \mu y régimen de operación;
-% - diferencia entre capacidad de adherencia y rigidez lateral del neumático;
-% - parámetros reales, nominales y estimados, y su disponibilidad runtime;
-% - regiones cercanas a saturación/handling limits si se estudian.
+El movimiento lateral utilizado en esta tesis se describe mediante un modelo de bicicleta dinámico lineal. Esta representación concentra las ruedas de cada eje en una sola rueda equivalente y supone pequeños ángulos de deriva, rigideces laterales lineales y velocidad longitudinal constante alrededor de un punto de operación. Para el seguimiento de trayectoria, el modelo se amplía con los errores lateral y de orientación, lo que permite representar los estados relevantes sin reproducir toda la dinámica multicuerpo de la planta de alta fidelidad. El vector de estados resultante es
 %
-% Conectar siempre con el problema de cambio de régimen y model mismatch.
+\begin{equation}
+    \mathbf{x} =
+    \begin{bmatrix}
+        e_y & e_\psi & v_y & r
+    \end{bmatrix}^{\mathsf{T}},
+    \label{eq:bicycle_states}
+\end{equation}
+%
+donde $e_\psi = \psi-\psi_{\mathrm{ref}}$.
+La entrada de control es el ángulo efectivo de dirección de las ruedas
+delanteras, $\delta$, mientras que la curvatura de la trayectoria de referencia,
+$\kappa_{\mathrm{ref}}$, constituye una entrada conocida.
+
+La figura~\ref{fig:bicycle_model} ilustra la representación del vehículo y las variables asociadas al seguimiento de la trayectoria de referencia.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.9\linewidth]{imgs/Gemini_bicicleta.png}
+    \caption{Esquema del modelo de bicicleta y de las variables utilizadas para describir el movimiento lateral y el seguimiento de trayectoria.}
+    \label{fig:bicycle_model}
+\end{figure}
+
+Las ecuaciones del modelo son
+%
+\begin{align}
+    \dot{e}_y
+    &= V_{x,0}e_\psi + v_y,
+    \label{eq:bicycle_ey}\\
+    %
+    \dot{e}_\psi
+    &= r - V_{x,0}\kappa_{\mathrm{ref}},
+    \label{eq:bicycle_epsi}\\
+    %
+    \dot{v}_y
+    &= -\frac{C_f+C_r}{mV_{x,0}}v_y
+    + \left(
+        \frac{C_rl_r-C_fl_f}{mV_{x,0}}-V_{x,0}
+      \right)r
+    + \frac{C_f}{m}\delta,
+    \label{eq:bicycle_vy}\\
+    %
+    \dot{r}
+    &= \frac{C_rl_r-C_fl_f}{I_zV_{x,0}}v_y
+    - \frac{C_fl_f^2+C_rl_r^2}{I_zV_{x,0}}r
+    + \frac{C_fl_f}{I_z}\delta.
+    \label{eq:bicycle_r}
+\end{align}
+
+Las rigideces laterales $C_f$ y $C_r$ representan valores equivalentes
+por eje. Las fuerzas laterales se aproximan linealmente, sin
+saturación explícita por adherencia.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Estados y entradas del modelo de bicicleta ampliado.}
+    \label{tab:bicycle_variables}
+    \begin{tabular}{@{}lll@{}}
+        \toprule
+        Símbolo & Descripción & Unidad \\
+        \midrule
+        $e_y$ & Error lateral respecto a la trayectoria & $\mathrm{m}$ \\
+        $e_\psi$ & Error de orientación & $\mathrm{rad}$ \\
+        $v_y$ & Velocidad lateral en el centro de gravedad
+            & $\mathrm{m/s}$ \\
+        $r$ & Velocidad angular de guiñada & $\mathrm{rad/s}$ \\
+        $\delta$ & Ángulo efectivo de dirección delantero
+            & $\mathrm{rad}$ \\
+        $\kappa_{\mathrm{ref}}$ & Curvatura de la trayectoria de referencia
+            & $\mathrm{m}^{-1}$ \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+La masa, el momento de inercia de guiñada, la posición del centro de gravedad y las rigideces laterales determinan la respuesta lateral y de guiñada. En particular, las rigideces $C_f$ y $C_r$ describen la pendiente local de la relación fuerza--ángulo de deriva y no deben confundirse con el límite de fuerza impuesto por la adherencia neumático--carretera. Cuando el vehículo opera cerca de saturación, cambia su carga o se aleja del punto de velocidad nominal, las hipótesis lineales pueden dejar de representar adecuadamente la respuesta de la planta.
 
 \section{Modelos orientados al control y discrepancias del modelo}
 
-% Explicar:
-% - por qué se utilizan modelos físicos simplificados en control;
-% - fuentes de discrepancia modelo--planta;
-% - efecto de parámetros desconocidos/variables;
-% - por qué un residual aprendido puede ser útil;
-% - por qué ese residual puede perder validez fuera del dominio de datos.
-% Separar el efecto de parámetros desconocidos del de variaciones respecto
-% al entrenamiento. Un valor desconocido pero representado en los datos
-% no constituye por sí solo un shift ni una pérdida de validez.
+Para su uso en control, las ecuaciones anteriores se organizan como un modelo en espacio de estados. Esta formulación conserva las relaciones dominantes entre dirección, movimiento lateral y guiñada, y permite obtener un modelo discreto compatible con la frecuencia de actualización del controlador.
+
+A partir de estas ecuaciones, la representación continua en espacio de estados es
+%
+\begin{equation}
+    \dot{\mathbf{x}}
+    =
+    \mathbf{A}_c\mathbf{x}
+    + \mathbf{B}_c\delta
+    + \mathbf{E}_c\kappa_{\mathrm{ref}},
+    \label{eq:bicycle_continuous}
+\end{equation}
+%
+con
+%
+\begin{equation}
+    \mathbf{A}_c =
+    \begin{bmatrix}
+        0 & V_{x,0} & 1 & 0 \\
+        0 & 0 & 0 & 1 \\
+        0 & 0
+          & -\dfrac{C_f+C_r}{mV_{x,0}}
+          & \dfrac{C_rl_r-C_fl_f}{mV_{x,0}}-V_{x,0} \\
+        0 & 0
+          & \dfrac{C_rl_r-C_fl_f}{I_zV_{x,0}}
+          & -\dfrac{C_fl_f^2+C_rl_r^2}{I_zV_{x,0}}
+    \end{bmatrix},
+    \label{eq:bicycle_Ac}
+\end{equation}
+%
+\begin{equation}
+    \mathbf{B}_c =
+    \begin{bmatrix}
+        0 \\
+        0 \\
+        C_f/m \\
+        C_fl_f/I_z
+    \end{bmatrix},
+    \qquad
+    \mathbf{E}_c =
+    \begin{bmatrix}
+        0 \\
+        -V_{x,0} \\
+        0 \\
+        0
+    \end{bmatrix}.
+    \label{eq:bicycle_Bc_Ec}
+\end{equation}
+
+Para utilizarlo en la predicción del MPC, el modelo se discretiza mediante un retenedor de orden cero
+(\textit{zero-order hold}, ZOH), considerando las entradas constantes
+en cada intervalo de muestreo:
+%
+\begin{equation}
+    \mathbf{x}_{k+1}
+    =
+    \mathbf{A}_d\mathbf{x}_k
+    + \mathbf{B}_d\delta_k
+    + \mathbf{E}_d\kappa_{\mathrm{ref},k},
+    \label{eq:bicycle_discrete}
+\end{equation}
+%
+donde
+%
+\begin{align}
+    \mathbf{A}_d
+    &= \exp\left(\mathbf{A}_cT_s\right),
+    \label{eq:bicycle_Ad}\\
+    %
+    \begin{bmatrix}
+        \mathbf{B}_d & \mathbf{E}_d
+    \end{bmatrix}
+    &=
+    \int_0^{T_s}
+        \exp\left(\mathbf{A}_c\tau\right)
+        \begin{bmatrix}
+            \mathbf{B}_c & \mathbf{E}_c
+        \end{bmatrix}
+    \,\mathrm{d}\tau.
+    \label{eq:bicycle_Bd_Ed}
+\end{align}
+
+Las matrices se calculan a la velocidad nominal $V_{x,0}$ y se mantienen constantes durante la simulación. Este modelo interno lineal, compuesto únicamente por el modelo de bicicleta, se denomina B0 y constituye la base física sobre la que se incorpora la corrección aprendida.
+
+La simplificación que hace computacionalmente útil a B0 también origina discrepancias respecto de CarSim. Entre sus fuentes se encuentran la linealización de los neumáticos, la omisión de saturaciones y acoplamientos, los errores en los parámetros nominales y los cambios de régimen de operación. Un parámetro real desconocido pero constante puede producir error de modelo sin constituir un cambio de distribución; el cambio de distribución aparece cuando la operación se aparta de las condiciones representadas por los datos o por las hipótesis empleadas para construir el modelo.
 
 \section{Modelos híbridos: física y residuales aprendidos}
 
-% Definir formalmente una arquitectura del tipo:
+Un modelo híbrido conserva la predicción física como estructura base y añade una función aprendida para aproximar la discrepancia que esa estructura no explica. En forma general,
+\begin{equation}
+    \mathbf{x}_{k+1}
+    =
+    f_{\mathrm{phys}}(\mathbf{x}_k,\mathbf{u}_k)
+    +
+    \mathbf{r}_{\boldsymbol{\theta}}(\mathbf{x}_k,\mathbf{u}_k)
+    +
+    \mathbf{w}_k,
+    \label{eq:generic_hybrid_model}
+\end{equation}
+donde $f_{\mathrm{phys}}$ es el modelo nominal, $\mathbf{r}_{\boldsymbol{\theta}}$ es el residual aprendido y $\mathbf{w}_k$ agrupa perturbaciones y discrepancias no representadas. En la arquitectura B1, esta idea se particulariza para los estados laterales del modelo de bicicleta.
+
+Para complementar la descripción física de B0, se incorpora un
+modelo residual que estima las discrepancias de predicción de la
+velocidad lateral y de la velocidad angular de guiñada. La combinación
+del modelo de bicicleta con esta corrección aprendida se denomina B1.
+Su propósito es representar parte de la dinámica que no queda
+recogida por las aproximaciones del modelo nominal, conservando
+la estructura física como base de la predicción.
+
+Se define el vector de estados laterales como
 %
-% x_{k+1} = f_{phys}(x_k,u_k) + r_\theta(x_k,u_k) + w_k
+\begin{equation}
+    \boldsymbol{\xi}_k =
+    \begin{bmatrix}
+        v_{y,k} \\
+        r_k
+    \end{bmatrix}.
+    \label{eq:b1_lateral_states}
+\end{equation}
 %
-% donde r_theta aprende la discrepancia residual.
+La predicción física de estos estados se obtiene mediante
 %
-% Precisar posteriormente:
-% - variables de entrada;
-% - salida residual;
-% - horizonte de uso;
-% - frecuencia de actualización;
-% - hipótesis del modelo físico.
-% Explicitar qué parámetros se mantienen nominales, cuáles se actualizan
-% y cuáles no se observan. Separar verdad de referencia del simulador e
-% información disponible para el modelo y el controlador.
+\begin{equation}
+    \hat{\boldsymbol{\xi}}^{\mathrm{B0}}_{k+1|k}
+    =
+    \mathbf{A}_{\mathrm{lat}}\boldsymbol{\xi}_k
+    + \mathbf{B}_{\mathrm{lat}}\delta_k,
+    \label{eq:b1_physical_prediction}
+\end{equation}
 %
-% No convertir esta sección en una comparación exhaustiva de algoritmos ML.
+donde $\mathbf{A}_{\mathrm{lat}}\in\mathbb{R}^{2\times2}$ y
+$\mathbf{B}_{\mathrm{lat}}\in\mathbb{R}^{2\times1}$ son las
+submatrices de $\mathbf{A}_d$ y $\mathbf{B}_d$ correspondientes
+a los estados $v_y$ y $r$, respectivamente.
+
+Una vez definida la predicción física, el residual utilizado como objetivo de entrenamiento se obtiene como la diferencia
+entre la respuesta de CarSim en el instante siguiente y la predicción
+física a un paso:
+%
+\begin{equation}
+    \mathbf{d}_k
+    =
+    \boldsymbol{\xi}^{\mathrm{CarSim}}_{k+1}
+    -
+    \hat{\boldsymbol{\xi}}^{\mathrm{B0}}_{k+1|k}
+    =
+    \begin{bmatrix}
+        d_{v_y,k} \\
+        d_{r,k}
+    \end{bmatrix}.
+    \label{eq:b1_residual_target}
+\end{equation}
+%
+Ambas respuestas se comparan para la misma transición, utilizando
+el estado inicial y la entrada de dirección correspondientes.
+El intervalo de predicción coincide con el período de muestreo
+del controlador, $T_s$. Por tanto, las componentes
+del residual tienen unidades de $\mathrm{m/s}$ y $\mathrm{rad/s}$:
+representan correcciones discretas de los estados, no de sus
+derivadas.
+
+Para aproximar este residual, se utiliza una red neuronal de tipo
+\textit{multilayer perceptron} (MLP), cuyo vector de entrada es
+%
+\begin{equation}
+    \mathbf{z}_k =
+    \begin{bmatrix}
+        V_{x,k} & v_{y,k} & r_k & \delta_k
+    \end{bmatrix}^{\mathsf{T}}.
+    \label{eq:b1_features}
+\end{equation}
+%
+La red proporciona una estimación determinista de las dos
+componentes del residual:
+%
+\begin{equation}
+    \hat{\mathbf{d}}_k
+    =
+    \mathbf{g}_{\boldsymbol{\theta}}(\mathbf{z}_k),
+    \label{eq:b1_residual_mapping}
+\end{equation}
+%
+donde $\boldsymbol{\theta}$ agrupa sus pesos y sesgos.
+Aunque la velocidad longitudinal medida forma parte de las
+entradas de la red, las matrices del modelo físico permanecen
+fijas en el punto nominal.
+
+Una vez entrenado el residual, la predicción lateral del modelo híbrido se construye sumando la corrección aprendida a la predicción de B0:
+%
+\begin{equation}
+    \boxed{
+    \hat{\boldsymbol{\xi}}^{\mathrm{B1}}_{k+1|k}
+    =
+    \mathbf{A}_{\mathrm{lat}}\boldsymbol{\xi}_k
+    +
+    \mathbf{B}_{\mathrm{lat}}\delta_k
+    +
+    \mathbf{g}_{\boldsymbol{\theta}}(\mathbf{z}_k).
+    }
+    \label{eq:b1_hybrid_prediction}
+\end{equation}
+%
+El residual se suma directamente a la predicción física,
+sin multiplicarlo nuevamente por $T_s$, porque ya representa
+una discrepancia sobre un intervalo de muestreo.
+
+La validez de esta corrección depende del dominio cubierto por los datos. Fuera de él, un residual determinista puede producir una corrección numéricamente plausible sin indicar que su error ha aumentado. Esta limitación motiva estimar durante la operación la incertidumbre, la calibración y el grado de alejamiento respecto del dominio de entrenamiento, y relacionar esas señales con el efecto del error sobre el control.
 
 \section{Control predictivo basado en modelos}
 
-% Presentar MPC/NMPC solo al nivel necesario para la tesis:
-% - modelo de predicción;
-% - horizonte;
-% - función de costo;
-% - restricciones;
-% - receding horizon;
-% - sensibilidad a errores de modelo.
-%
-% Introducir el horizonte N como principal variable de adaptación
-% propuesta. No fijar todavía si C bajo implica aumentar o disminuir N:
-% esta relación debe justificarse en la metodología/experimentos.
+El MPC calcula una secuencia de entradas utilizando un modelo para predecir la evolución del sistema sobre un horizonte finito y considerar explícitamente sus restricciones \cite{Su2026ReinforcementLearningBased}. Para un horizonte de predicción $N$, una formulación representativa es
+\begin{align}
+    \min_{\mathbf{u}_{0|k},\ldots,\mathbf{u}_{N-1|k}}\quad
+    & \sum_{i=0}^{N-1}
+      \left(
+        \lVert \mathbf{x}_{i|k}-\mathbf{x}^{\mathrm{ref}}_{i|k}\rVert_{\mathbf{Q}}^2
+        +
+        \lVert \mathbf{u}_{i|k}\rVert_{\mathbf{R}}^2
+      \right)
+      +
+      \lVert \mathbf{x}_{N|k}-\mathbf{x}^{\mathrm{ref}}_{N|k}\rVert_{\mathbf{P}}^2,
+    \label{eq:mpc_cost}\\
+    \text{sujeto a}\quad
+    & \mathbf{x}_{i+1|k}
+      =
+      f_{\mathrm{pred}}(\mathbf{x}_{i|k},\mathbf{u}_{i|k}), \nonumber\\
+    & \mathbf{x}_{i|k}\in\mathcal{X},\qquad
+      \mathbf{u}_{i|k}\in\mathcal{U}. \nonumber
+\end{align}
+Las matrices $\mathbf{Q}$, $\mathbf{R}$ y $\mathbf{P}$ ponderan el seguimiento, el esfuerzo de control y el estado terminal; $\mathcal{X}$ y $\mathcal{U}$ representan las restricciones. Si $f_{\mathrm{pred}}$ es lineal se obtiene una formulación MPC lineal; si conserva no linealidades relevantes, el problema corresponde a NMPC.
+
+Solo la primera entrada de la secuencia optimizada se aplica a la planta. En el instante siguiente se actualiza el estado, se desplaza el horizonte y se resuelve nuevamente el problema. Este principio de horizonte móvil permite incorporar nueva información, pero no elimina la dependencia respecto de la calidad del modelo: un error persistente en $f_{\mathrm{pred}}$ se propaga a lo largo del horizonte y puede modificar tanto el costo previsto como la activación de restricciones.
+
+En esta tesis, el horizonte $N$ es la principal variable candidata para adaptar el controlador con base en la señal de validez. La dirección y magnitud de esa adaptación no se presuponen: deben determinarse mediante el análisis del compromiso entre alcance predictivo, acumulación del error de modelo, desempeño en lazo cerrado y costo computacional.
 
 \section{Funciones de barrera de control como extensión opcional}
 
@@ -1407,59 +1162,826 @@ S_{\mathrm{OOD},k}
     incorporar las extensiones con CBF y/o DAgger.
 \end{enumerate}
 
+\section{Entorno común de entrenamiento y evaluación de los modelos}
+
+Los modelos B1--B4 se construyen sobre el mismo modelo físico B0 y utilizan un entorno experimental común. Esta decisión permite atribuir las diferencias observadas al tipo de modelo residual y a su representación de la incertidumbre, sin confundirlas con cambios en los datos, la partición o el preprocesamiento. En esta sección se documentan una sola vez el modelo nominal, el dominio de identificación, la partición congelada y el protocolo de evaluación. Las secciones dedicadas a cada modelo describen únicamente sus particularidades.
+
+\subsection{Modelo físico nominal B0}
+
+\begin{table}[htbp]
+    \centering
+    \caption{Parámetros utilizados en el modelo de bicicleta nominal B0.}
+    \label{tab:bicycle_parameters}
+    \begin{tabular}{@{}llll@{}}
+        \toprule
+        Símbolo & Descripción & Valor & Unidad \\
+        \midrule
+        $m$ & Masa del vehículo
+            & $1501$ & $\mathrm{kg}$ \\
+        $I_z$ & Momento de inercia de guiñada
+            & $2192.089539$ & $\mathrm{kg\,m^2}$ \\
+        $l_f$ & Distancia del CG al eje delantero
+            & $1.049562958$ & $\mathrm{m}$ \\
+        $l_r$ & Distancia del CG al eje trasero
+            & $1.860437042$ & $\mathrm{m}$ \\
+        $C_f$ & Rigidez lateral equivalente del eje delantero
+            & $159055$ & $\mathrm{N/rad}$ \\
+        $C_r$ & Rigidez lateral equivalente del eje trasero
+            & $92776.5$ & $\mathrm{N/rad}$ \\
+        $V_{x,0}$ & Velocidad longitudinal nominal
+            & $60/3.6$ & $\mathrm{m/s}$ \\
+        $T_s$ & Período de muestreo
+            & $0.020$ & $\mathrm{s}$ \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+Las matrices discretas de B0 se obtienen mediante un retenedor de orden cero con el período de muestreo indicado en el Cuadro~\ref{tab:bicycle_parameters}. Se calculan en el punto de velocidad nominal y se mantienen fijas durante la generación y evaluación de las líneas base. Los parámetros reales modificados en los escenarios de cambio se registran por separado y no se proporcionan al controlador, salvo que el protocolo de un experimento lo indique explícitamente.
+
+\subsection{Generación de datos y dominio nominal}
+
+Los datos proceden de simulaciones en lazo cerrado con la planta CarSim, el vehículo \textit{C-Class hatchback} y un MPC basado exclusivamente en B0. El dominio de identificación comprende las maniobras \textit{double lane change} (DLC) y \textit{double lane change truncated} (DLCT), una velocidad de referencia de $60\,\mathrm{km/h}$ y un coeficiente de adherencia $\mu=1$. Las señales se muestrean a $50\,\mathrm{Hz}$, de modo que cada objetivo representa la discrepancia acumulada durante un intervalo de $20\,\mathrm{ms}$.
+
+El conjunto contiene cinco corridas completas de cada maniobra. No se excluyeron muestras del dominio nominal: las diez corridas aportan $5170$ transiciones, distribuidas como se resume en el Cuadro~\ref{tab:common_dataset}.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Composición del conjunto nominal común a B1--B4.}
+    \label{tab:common_dataset}
+    \begin{tabular}{@{}lccc@{}}
+        \toprule
+        Maniobra & Corridas & Muestras por corrida & Total \\
+        \midrule
+        DLC  & 001--005 & 634 & 3170 \\
+        DLCT & 001--005 & 400 & 2000 \\
+        \midrule
+        Total & 10 & --- & 5170 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+Para todos los modelos, la entrada es el vector
+$\mathbf{z}_k=[V_{x,k},\,v_{y,k},\,r_k,\,\delta_k]^{\mathsf T}$
+definido en la ecuación~\eqref{eq:b1_features}, y el objetivo es el residual discreto
+$\mathbf{d}_k=[d_{v_y,k},\,d_{r,k}]^{\mathsf T}$
+de la ecuación~\eqref{eq:b1_residual_target}. Por tanto, la matriz de entradas tiene dimensión $5170\times4$ y la matriz de objetivos dimensión $5170\times2$. La consistencia de los residuos almacenados se verificó reconstruyendo ambas componentes a partir de la predicción de B0 y la respuesta de CarSim; el error máximo de esa comprobación fue numéricamente nulo.
+
+\subsection{Partición congelada por corridas}
+
+La separación se realiza por corridas completas y se conserva sin cambios para B1--B4. De esta manera, ninguna transición de una corrida aparece en más de una partición y todas las comparaciones utilizan exactamente los mismos datos. Para abreviar, DLC-002 denota la corrida 002 de la maniobra DLC y análogamente para los demás grupos.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Partición común y congelada de las corridas nominales.}
+    \label{tab:common_frozen_split}
+    \begin{tabular}{@{}lp{0.61\linewidth}r@{}}
+        \toprule
+        Partición & Corridas & Muestras \\
+        \midrule
+        Entrenamiento
+            & DLC-001, DLCT-001, DLCT-002, DLC-004, DLCT-004 y DLC-005
+            & 3102 \\
+        Validación
+            & DLC-003 y DLCT-005
+            & 1034 \\
+        Prueba ID
+            & DLC-002 y DLCT-003
+            & 1034 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+La partición de validación se utiliza para seleccionar configuraciones o detener el entrenamiento, según el algoritmo. La partición de prueba ID permanece excluida de esas decisiones y se utiliza únicamente para la comparación final dentro del dominio nominal. Esta definición explícita sustituye una descripción basada solamente en una semilla aleatoria y constituye la referencia reproducible para los modelos posteriores.
+
+\subsection{Preprocesamiento y protocolo de comparación}
+
+Las entradas y los objetivos se estandarizan con estadísticas calculadas exclusivamente sobre las $3102$ muestras de entrenamiento:
+\begin{align}
+    \tilde{\mathbf{z}}_k
+    &=
+    \mathbf{S}_z^{-1}
+    \left(\mathbf{z}_k-\boldsymbol{\mu}_z\right),
+    \label{eq:b1_input_normalization}\\
+    \tilde{\mathbf{d}}_k
+    &=
+    \mathbf{S}_d^{-1}
+    \left(\mathbf{d}_k-\boldsymbol{\mu}_d\right).
+    \label{eq:b1_target_normalization}
+\end{align}
+Los vectores $\boldsymbol{\mu}_z$ y $\boldsymbol{\mu}_d$ contienen las medias de entrenamiento, mientras que $\mathbf{S}_z$ y $\mathbf{S}_d$ son matrices diagonales con las desviaciones estándar correspondientes. Las mismas transformaciones se aplican sin reajuste a validación y prueba ID. Una predicción normalizada se devuelve a unidades físicas mediante
+\begin{equation}
+    \hat{\mathbf{d}}_k
+    =
+    \boldsymbol{\mu}_d
+    +
+    \mathbf{S}_d\hat{\tilde{\mathbf{d}}}_k.
+    \label{eq:b1_denormalization}
+\end{equation}
+
+La capacidad predictiva se evalúa por componente mediante RMSE y MAE del residual. Además, la predicción híbrida a un paso se compara con B0 sobre las mismas transiciones de prueba ID. Para los modelos probabilísticos se añaden métricas de incertidumbre y calibración, pero estas se definen en las secciones particulares correspondientes. Los escenarios externos al dominio nominal no intervienen en el entrenamiento ni en la selección y se reservan para el estudio de pérdida de validez.
+
+\section{Descripción de los modelos entrenados}
+
+Cada modelo se presenta a partir de su función dentro del estudio, su estructura específica, el criterio de entrenamiento o selección y su verificación en la partición común. El dominio de datos, las variables, la normalización y la partición no se repiten en las descripciones individuales.
+
+\subsection{B1: MLP residual determinista}
+
+B1 es la línea base residual determinista. Su función es establecer cuánto puede reducirse el error de B0 mediante una corrección neuronal puntual, sin incorporar todavía una distribución predictiva, una descomposición de incertidumbre ni un mecanismo de supervisión de validez. La salida de B1 es la estimación de las dos componentes del residual a un paso.
+
+La MLP recibe cuatro entradas estandarizadas, contiene dos capas ocultas de 64 neuronas con activación ReLU y produce dos salidas lineales. En forma compacta,
+\begin{equation}
+    \hat{\tilde{\mathbf{d}}}_k
+    =
+    \mathbf{W}_3
+    \rho\!\left(
+        \mathbf{W}_2
+        \rho\!\left(
+            \mathbf{W}_1\tilde{\mathbf{z}}_k+\mathbf{b}_1
+        \right)
+        +\mathbf{b}_2
+    \right)
+    +\mathbf{b}_3,
+    \label{eq:b1_mlp_mapping}
+\end{equation}
+donde $\rho(a)=\max(0,a)$ se aplica componente a componente. La salida se desestandariza mediante la ecuación~\eqref{eq:b1_denormalization} y se suma directamente a la predicción física, conforme a la ecuación~\eqref{eq:b1_hybrid_prediction}.
+
+El ajuste se realiza con la función \texttt{fitrnet} de MATLAB. Se comparan límites de 100 y 200 iteraciones y se selecciona el candidato con menor RMSE conjunto de validación en el espacio estandarizado:
+\begin{equation}
+    J_{\mathrm{val}}
+    =
+    \sqrt{
+        \frac{1}{2N_{\mathrm{val}}}
+        \sum_{k\in\mathcal{I}_{\mathrm{val}}}
+        \left\|
+            \tilde{\mathbf{d}}_k
+            -
+            \hat{\tilde{\mathbf{d}}}_k
+        \right\|_2^2
+    }.
+    \label{eq:b1_validation_score}
+\end{equation}
+El límite de 200 iteraciones obtuvo $J_{\mathrm{val}}=0.073810$, frente a $0.075873$ para 100 iteraciones, y fue la configuración conservada. El Cuadro~\ref{tab:b1_configuration} resume únicamente las decisiones específicas de B1.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Configuración específica del modelo B1.}
+    \label{tab:b1_configuration}
+    \begin{tabular}{@{}lp{0.60\linewidth}@{}}
+        \toprule
+        Elemento & Configuración \\
+        \midrule
+        Función en el estudio
+            & Línea base residual determinista \\
+        Tipo de modelo
+            & MLP de regresión entrenada con \texttt{fitrnet} \\
+        Arquitectura
+            & $4 \rightarrow 64 \rightarrow 64 \rightarrow 2$ \\
+        Activación
+            & ReLU en las capas ocultas y salida lineal \\
+        Salida
+            & Estimación puntual de $d_{v_y,k}$ y $d_{r,k}$ \\
+        Límites evaluados
+            & 100 y 200 iteraciones \\
+        Configuración seleccionada
+            & 200 iteraciones \\
+        Criterio de selección
+            & Menor RMSE conjunto estandarizado de validación \\
+        Incertidumbre predictiva
+            & No disponible \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+El Cuadro~\ref{tab:b1_residual_performance} presenta el desempeño del residual en las tres particiones. La proximidad entre entrenamiento y validación indica que la selección no depende de una reducción del error exclusiva de las muestras de ajuste; la prueba ID se mantiene como comprobación independiente.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Desempeño de B1 en la predicción del residual a $20\,\mathrm{ms}$.}
+    \label{tab:b1_residual_performance}
+    \begin{tabular}{@{}lcccc@{}}
+        \toprule
+        & \multicolumn{2}{c}{$d_{v_y}$ ($\mathrm{m/s}$)}
+        & \multicolumn{2}{c}{$d_r$ ($\mathrm{rad/s}$)} \\
+        \cmidrule(lr){2-3}\cmidrule(l){4-5}
+        Partición & RMSE & MAE & RMSE & MAE \\
+        \midrule
+        Entrenamiento & 0.009128 & 0.006627 & 0.007390 & 0.005420 \\
+        Validación     & 0.008871 & 0.006100 & 0.007033 & 0.004664 \\
+        Prueba ID      & 0.010784 & 0.008180 & 0.008546 & 0.006490 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+Finalmente, el Cuadro~\ref{tab:b1_physics_hybrid_comparison} compara la predicción a un paso de B0 y B1 en prueba ID. B1 reduce el RMSE de $v_y$ en un $91.66$\,\% y el de $r$ en un $90.25$\,\%. Estos resultados justifican su uso como línea base predictiva, pero no informan sobre la validez de la corrección fuera del dominio nominal.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Comparación a un paso entre B0 y B1 en prueba ID.}
+    \label{tab:b1_physics_hybrid_comparison}
+    \begin{tabular}{@{}lccc@{}}
+        \toprule
+        Estado & RMSE B0 & RMSE B1 & Mejora \\
+        \midrule
+        $v_y$ ($\mathrm{m/s}$)   & 0.129336 & 0.010784 & $91.66$\,\% \\
+        $r$ ($\mathrm{rad/s}$)   & 0.087671 & 0.008546 & $90.25$\,\% \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\subsection{B2: proceso gaussiano homoscedástico}
+
+B2 reemplaza la MLP determinista de B1 por dos procesos gaussianos (GP) independientes, uno para $d_{v_y}$ y otro para $d_r$. Su función en el estudio es conservar una capacidad de corrección comparable con B1 y añadir una distribución predictiva que permita cuantificar la incertidumbre dentro y fuera del dominio nominal. La independencia entre las dos salidas simplifica el entrenamiento, aunque implica que B2 no modela explícitamente su covarianza cruzada.
+
+Para cada componente $j\in\{v_y,r\}$ se considera
+\begin{equation}
+    d_{j,k}
+    =
+    f_j(\tilde{\mathbf{z}}_k)
+    +
+    \varepsilon_{j,k},
+    \qquad
+    \varepsilon_{j,k}\sim
+    \mathcal{N}(0,\sigma_{n,j}^2),
+    \label{eq:b2_gp_observation_model}
+\end{equation}
+donde $f_j$ sigue un GP exacto con kernel cuadrático exponencial y selección automática de relevancia (ARD). Para entradas estandarizadas, el kernel puede escribirse como
+\begin{equation}
+    k_j(\mathbf{z},\mathbf{z}')
+    =
+    \sigma_{f,j}^2
+    \exp\!\left[
+        -\frac{1}{2}
+        \sum_{q=1}^{4}
+        \frac{(z_q-z'_q)^2}{\ell_{j,q}^2}
+    \right],
+    \label{eq:b2_ard_kernel}
+\end{equation}
+con una escala de longitud $\ell_{j,q}$ por entrada. El término $\sigma_{n,j}$ es constante en todo el espacio de entrada; esta hipótesis define el carácter homoscedástico de B2.
+
+La distribución predictiva de cada salida se representa como
+\begin{equation}
+    p(d_{j,*}\mid\tilde{\mathbf{z}}_*,\mathcal{D}_{\mathrm{tr}})
+    =
+    \mathcal{N}\!\left(
+        \mu_{j,*},
+        \sigma_{\mathrm{epi},j,*}^{2}+\sigma_{n,j}^{2}
+    \right).
+    \label{eq:b2_predictive_distribution}
+\end{equation}
+Aquí, $\sigma_{\mathrm{epi},j,*}$ corresponde a la desviación estándar posterior de la función latente y disminuye cerca de datos informativos; $\sigma_{n,j}$ representa una dispersión constante aprendida. Por tanto, B2 proporciona una incertidumbre predictiva total y una aproximación a la componente epistémica, pero no puede representar variaciones locales de la dispersión aleatoria.
+
+Se entrenan los dos GP sobre la partición común, sin búsqueda adicional de datos o modificación de la normalización. El Cuadro~\ref{tab:b2_configuration} resume las decisiones específicas y los tiempos registrados en el artefacto de entrenamiento.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Configuración específica del modelo B2.}
+    \label{tab:b2_configuration}
+    \begin{tabular}{@{}lp{0.60\linewidth}@{}}
+        \toprule
+        Elemento & Configuración \\
+        \midrule
+        Función en el estudio
+            & Línea base probabilística homoscedástica \\
+        Tipo de modelo
+            & Dos GP exactos independientes \\
+        Kernel
+            & Cuadrático exponencial con ARD \\
+        Salidas
+            & Distribuciones predictivas separadas para $d_{v_y,k}$ y $d_{r,k}$ \\
+        Modelo de ruido
+            & Gaussiano, aprendido y constante para cada salida \\
+        Incertidumbre disponible
+            & Total y epistémica latente aproximada \\
+        Tiempo de entrenamiento
+            & $42.402\,\mathrm{s}$ para $d_{v_y}$ y $35.840\,\mathrm{s}$ para $d_r$ \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+Las escalas de longitud aprendidas se muestran en el Cuadro~\ref{tab:b2_length_scales}. Como las entradas se encuentran estandarizadas, una escala menor indica una variación más rápida de la función respecto de esa característica, pero no constituye por sí sola una medida causal de importancia.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Escalas de longitud ARD aprendidas por B2.}
+    \label{tab:b2_length_scales}
+    \begin{tabular}{@{}lcc@{}}
+        \toprule
+        Entrada & GP de $d_{v_y}$ & GP de $d_r$ \\
+        \midrule
+        $V_x$     & 2.6832 & 1.2561 \\
+        $v_y$     & 3.1020 & 1.8271 \\
+        $r$       & 0.9062 & 0.9574 \\
+        $\delta$  & 1.7534 & 1.3580 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+El Cuadro~\ref{tab:b2_residual_performance} presenta el desempeño de la media predictiva. Los errores son cercanos a los obtenidos por B1, lo que permite estudiar la información probabilística de B2 sin introducir una pérdida relevante de precisión nominal.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Desempeño de B2 en la predicción del residual a $20\,\mathrm{ms}$.}
+    \label{tab:b2_residual_performance}
+    \begin{tabular}{@{}lcccc@{}}
+        \toprule
+        & \multicolumn{2}{c}{$d_{v_y}$ ($\mathrm{m/s}$)}
+        & \multicolumn{2}{c}{$d_r$ ($\mathrm{rad/s}$)} \\
+        \cmidrule(lr){2-3}\cmidrule(l){4-5}
+        Partición & RMSE & MAE & RMSE & MAE \\
+        \midrule
+        Entrenamiento & 0.009375 & 0.006769 & 0.007347 & 0.005371 \\
+        Validación     & 0.008791 & 0.005860 & 0.006884 & 0.004620 \\
+        Prueba ID      & 0.010684 & 0.008057 & 0.008624 & 0.006552 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+En prueba ID, los niveles de ruido homoscedástico aprendidos fueron $0.009575\,\mathrm{m/s}$ para $d_{v_y}$ y $0.007583\,\mathrm{rad/s}$ para $d_r$. El Cuadro~\ref{tab:b2_uncertainty_diagnostics} resume los diagnósticos probabilísticos. La cobertura de los intervalos gaussianos nominales del $95$\,\% queda alrededor del $91.7$\,\%, lo que indica una ligera sobreconfianza y motiva evaluar posteriormente la calibración de forma explícita.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Diagnósticos probabilísticos de B2 en prueba ID.}
+    \label{tab:b2_uncertainty_diagnostics}
+    \begin{tabular}{@{}lcc@{}}
+        \toprule
+        Magnitud & $d_{v_y}$ & $d_r$ \\
+        \midrule
+        $\sigma_n$ aprendida
+            & $0.009575\,\mathrm{m/s}$ & $0.007583\,\mathrm{rad/s}$ \\
+        Desviación predictiva media
+            & $0.009824\,\mathrm{m/s}$ & $0.007936\,\mathrm{rad/s}$ \\
+        Desviación epistémica media aproximada
+            & $0.001766\,\mathrm{m/s}$ & $0.001841\,\mathrm{rad/s}$ \\
+        Cobertura del intervalo del $95$\,\%
+            & $91.68$\,\% & $91.78$\,\% \\
+        NLL gaussiano
+            & $-3.1080$ & $-3.3202$ \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+La comparación a un paso del Cuadro~\ref{tab:b2_physics_hybrid_comparison} confirma que la media de B2 conserva la mejora predictiva del modelo híbrido: reduce el RMSE de $v_y$ en un $91.74$\,\% y el de $r$ en un $90.16$\,\% respecto de B0. Su contribución diferencial frente a B1 no es, por tanto, una mejora sustancial de la media, sino la disponibilidad de una distribución predictiva homoscedástica que servirá como referencia para los modelos heteroscedásticos posteriores.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Comparación a un paso entre B0 y B2 en prueba ID.}
+    \label{tab:b2_physics_hybrid_comparison}
+    \begin{tabular}{@{}lccc@{}}
+        \toprule
+        Estado & RMSE B0 & RMSE B2 & Mejora \\
+        \midrule
+        $v_y$ ($\mathrm{m/s}$) & 0.129336 & 0.010684 & $91.74$\,\% \\
+        $r$ ($\mathrm{rad/s}$) & 0.087671 & 0.008624 & $90.16$\,\% \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\subsection{B3: conjunto profundo de MLP heteroscedásticas}
+
+B3 utiliza un \textit{deep ensemble} formado por cinco MLP heteroscedásticas. A diferencia de B1, cada miembro predice simultáneamente la media y la varianza condicional de las dos componentes del residual. A diferencia de B2, la dispersión aleatoria puede cambiar con la entrada y la incertidumbre epistémica se aproxima mediante el desacuerdo entre redes entrenadas de forma independiente.
+
+Cada miembro $m\in\{1,\ldots,M\}$ recibe $\tilde{\mathbf{z}}_k$ y produce cuatro salidas:
+\begin{equation}
+    \left[
+        \boldsymbol{\mu}^{(m)}_k,
+        \mathbf{s}^{(m)}_k
+    \right]
+    =
+    \mathbf{g}_{\boldsymbol{\theta}_m}
+    (\tilde{\mathbf{z}}_k),
+    \qquad
+    \boldsymbol{\mu}^{(m)}_k,\mathbf{s}^{(m)}_k\in\mathbb{R}^{2},
+    \label{eq:b3_member_output}
+\end{equation}
+donde $\boldsymbol{\mu}^{(m)}_k$ es la media residual normalizada y $\mathbf{s}^{(m)}_k$ representa la log-varianza. Para mantener estable el entrenamiento, sus componentes se restringen al intervalo $[-8,5]$ y se transforman mediante
+\begin{equation}
+    \left(\boldsymbol{\sigma}^{2}\right)^{(m)}_k
+    =
+    \exp\!\left(\mathbf{s}^{(m)}_k\right).
+    \label{eq:b3_member_variance}
+\end{equation}
+
+Cada red se ajusta minimizando la log-verosimilitud negativa (NLL) gaussiana heteroscedástica en el espacio normalizado. Omitiendo constantes independientes de los parámetros, la pérdida de un miembro es
+\begin{equation}
+    \mathcal{L}^{(m)}_{mathrm{NLL}}
+    =
+    \frac{1}{2N}
+    \sum_{k=1}^{N}
+    \sum_{j=1}^{2}
+    \left[
+        s^{(m)}_{j,k}
+        +
+        \exp\!\left(-s^{(m)}_{j,k}\right)
+        \left(
+            \tilde d_{j,k}-\mu^{(m)}_{j,k}
+        \right)^2
+    \right].
+    \label{eq:b3_heteroscedastic_nll}
+\end{equation}
+Esta función obliga a cada miembro a equilibrar el error de la media y la dispersión que asigna a cada muestra; una varianza grande reduce la penalización cuadrática, pero aumenta directamente el término de log-varianza.
+
+La predicción conjunta se obtiene combinando los momentos de los $M=5$ miembros. Para cada componente del residual,
+\begin{align}
+    \bar{\mu}_k
+    &=
+    \frac{1}{M}
+    \sum_{m=1}^{M}\mu^{(m)}_k,
+    \label{eq:b3_ensemble_mean}\\
+    U^2_{\mathrm{epi},k}
+    &=
+    \frac{1}{M}
+    \sum_{m=1}^{M}
+    \left(\mu^{(m)}_k-\bar{\mu}_k\right)^2,
+    \label{eq:b3_epistemic}\\
+    U^2_{\mathrm{ale},k}
+    &=
+    \frac{1}{M}
+    \sum_{m=1}^{M}
+    \left(\sigma^2\right)^{(m)}_k,
+    \label{eq:b3_aleatoric}\\
+    U_{\mathrm{tot},k}
+    &=
+    \sqrt{
+        U^2_{\mathrm{epi},k}
+        +
+        U^2_{\mathrm{ale},k}
+    }.
+    \label{eq:b3_total_uncertainty}
+\end{align}
+Las medias y desviaciones se transforman después a unidades físicas mediante las estadísticas comunes de los objetivos. $U_{\mathrm{ale}}$ debe interpretarse como una estimación operacional de la dispersión condicional aprendida, no como una medición directa y pura del ruido físico.
+
+Cada MLP conserva las dos capas ocultas de 64 neuronas de B1, pero su capa de salida tiene cuatro componentes. El entrenamiento utiliza lotes de 256 muestras, tasa de aprendizaje $10^{-3}$, un máximo de 250 épocas y parada temprana con paciencia de 25 épocas. La semilla base 42 controla la inicialización reproducible de los miembros; no define la partición de datos, que permanece fijada por el Cuadro~\ref{tab:common_frozen_split}. El entrenamiento se realizó en CPU. El Cuadro~\ref{tab:b3_configuration} resume estas decisiones.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Configuración específica del modelo B3.}
+    \label{tab:b3_configuration}
+    \begin{tabular}{@{}lp{0.60\linewidth}@{}}
+        \toprule
+        Elemento & Configuración \\
+        \midrule
+        Función en el estudio
+            & Línea base neuronal con incertidumbre descompuesta \\
+        Tipo de modelo
+            & \textit{Deep ensemble} heteroscedástico de cinco MLP \\
+        Arquitectura por miembro
+            & $4 \rightarrow 64 \rightarrow 64 \rightarrow 4$ \\
+        Salidas por miembro
+            & Dos medias y dos log-varianzas \\
+        Función de pérdida
+            & NLL gaussiana heteroscedástica \\
+        Tamaño de lote
+            & 256 muestras \\
+        Tasa de aprendizaje
+            & $10^{-3}$ \\
+        Épocas máximas y paciencia
+            & 250 y 25, respectivamente \\
+        Límites de log-varianza
+            & $[-8,5]$ \\
+        Semilla base
+            & 42 \\
+        Incertidumbre disponible
+            & Epistémica, aleatoria condicional y total \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+Los cinco miembros activaron la parada temprana y alcanzaron valores de NLL de validación próximos entre sí, sin que apareciera una red claramente anómala. El Cuadro~\ref{tab:b3_member_training} presenta la época final y el mejor valor de validación de cada miembro.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Convergencia de los miembros del conjunto B3.}
+    \label{tab:b3_member_training}
+    \begin{tabular}{@{}ccc@{}}
+        \toprule
+        Miembro & Época de parada & Mejor NLL de validación \\
+        \midrule
+        1 & 187 & $-2.1428$ \\
+        2 & 122 & $-2.0985$ \\
+        3 & 169 & $-2.1416$ \\
+        4 & 120 & $-2.1212$ \\
+        5 & 145 & $-2.1013$ \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+En prueba ID, la media del conjunto alcanzó los resultados del Cuadro~\ref{tab:b3_predictive_performance}. Su precisión permanece en el mismo orden que B1 y B2, por lo que la estimación heteroscedástica y el desacuerdo del conjunto no se obtienen a costa de una degradación relevante de la predicción nominal.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Desempeño predictivo de B3 en prueba ID.}
+    \label{tab:b3_predictive_performance}
+    \begin{tabular}{@{}lcc@{}}
+        \toprule
+        Métrica & $d_{v_y}$ ($\mathrm{m/s}$) & $d_r$ ($\mathrm{rad/s}$) \\
+        \midrule
+        RMSE & 0.010591 & 0.008718 \\
+        MAE  & 0.007949 & 0.006583 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+El Cuadro~\ref{tab:b3_uncertainty_diagnostics} muestra que, dentro del dominio nominal, la incertidumbre aleatoria media es aproximadamente cinco veces mayor que la epistémica. Esto es consistente con un conjunto cuyos miembros coinciden en regiones representadas por los datos, mientras mantienen una dispersión condicional residual. La cobertura permanece por debajo del $95$\,\% nominal, por lo que B3 está ligeramente sobreconfiado en prueba ID.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Diagnósticos probabilísticos de B3 en prueba ID.}
+    \label{tab:b3_uncertainty_diagnostics}
+    \begin{tabular}{@{}lcc@{}}
+        \toprule
+        Magnitud & $d_{v_y}$ & $d_r$ \\
+        \midrule
+        $U_{\mathrm{epi}}$ medio
+            & $0.001680\,\mathrm{m/s}$ & $0.001533\,\mathrm{rad/s}$ \\
+        $U_{\mathrm{ale}}$ medio
+            & $0.009230\,\mathrm{m/s}$ & $0.007686\,\mathrm{rad/s}$ \\
+        $U_{\mathrm{tot}}$ medio
+            & $0.009438\,\mathrm{m/s}$ & $0.007890\,\mathrm{rad/s}$ \\
+        Cobertura del intervalo del $95$\,\%
+            & $92.36$\,\% & $93.13$\,\% \\
+        NLL gaussiano ajustado por momentos
+            & $-3.1869$ & $-3.3687$ \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+El NLL anterior corresponde a la aproximación gaussiana
+$\mathcal{N}(\bar{\mu},U^2_{\mathrm{epi}}+U^2_{\mathrm{ale}})$ obtenida por ajuste de momentos; no es el NLL exacto de la mezcla de cinco gaussianas. Esta convención permite compararlo con B2, pero debe conservarse al interpretar sus valores. Frente al GP homoscedástico, B3 mejora modestamente tanto la cobertura como el NLL en prueba ID, aunque ninguno de los dos modelos está perfectamente calibrado.
+
+Finalmente, el Cuadro~\ref{tab:b3_physics_hybrid_comparison} muestra la comparación con B0. B3 reduce el RMSE de $v_y$ en un $91.81$\,\% y el de $r$ en un $90.06$\,\%. Su contribución principal respecto de B1 y B2 es proporcionar simultáneamente una media residual competitiva, una dispersión condicional y una señal de desacuerdo entre modelos.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Comparación a un paso entre B0 y B3 en prueba ID.}
+    \label{tab:b3_physics_hybrid_comparison}
+    \begin{tabular}{@{}lccc@{}}
+        \toprule
+        Estado & RMSE B0 & RMSE B3 & Mejora \\
+        \midrule
+        $v_y$ ($\mathrm{m/s}$) & 0.129336 & 0.010591 & $91.81$\,\% \\
+        $r$ ($\mathrm{rad/s}$) & 0.087671 & 0.008718 & $90.06$\,\% \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\subsection{B4: proceso gaussiano heteroscedástico en dos etapas}
+
+B4 conserva sin modificaciones los dos GP de media de B2 y añade una segunda etapa destinada a estimar una dispersión residual dependiente de la entrada. Esta construcción permite aislar el efecto de la heteroscedasticidad: B2 y B4 comparten la misma media predictiva y la misma incertidumbre epistémica latente, mientras que difieren en el tratamiento de la dispersión residual, constante en B2 y variable en B4.
+
+La primera etapa se define por los GP exactos con kernel cuadrático exponencial ARD descritos para B2. Para entrenar la segunda etapa sin emplear residuos obtenidos sobre las mismas muestras usadas para ajustar la media, se generan predicciones fuera de pliegue dentro de la partición de entrenamiento. Si $g(i)$ identifica el grupo al que pertenece la muestra $i$, el residuo correspondiente es
+\begin{equation}
+    e^{\mathrm{OOF}}_{j,i}
+    =
+    d_{j,i}
+    -
+    \hat{\mu}^{(-g(i))}_{j}(\tilde{\mathbf{z}}_i),
+    \qquad j\in\{v_y,r\},
+    \label{eq:b4_oof_residual}
+\end{equation}
+donde $\hat{\mu}^{(-g(i))}_{j}$ se obtiene sin utilizar el grupo de la muestra evaluada. Los RMSE de estas predicciones fuera de pliegue fueron $0.010188\,\mathrm{m/s}$ para $d_{v_y}$ y $0.008365\,\mathrm{rad/s}$ para $d_r$.
+
+Para cada salida se ajusta un segundo GP sobre una transformación logarítmica del residuo cuadrático fuera de pliegue. El artefacto de entrenamiento conserva la corrección
+$c_{\chi^2}=\mathbb{E}[\log(\chi_1^2)]=-1.27036$, empleada para compensar el sesgo introducido por la transformación logarítmica. En forma compacta, el objetivo de esta etapa puede expresarse como
+\begin{equation}
+    q_{j,i}
+    =
+    \log\!\left[
+        \left(e^{\mathrm{OOF}}_{j,i}\right)^2+\epsilon_j
+    \right]
+    -c_{\chi^2},
+    \label{eq:b4_variance_target}
+\end{equation}
+donde $\epsilon_j>0$ evita la singularidad del logaritmo. Si $\hat q_j(\tilde{\mathbf{z}}_*)$ es la predicción del GP de dispersión, las componentes operacionales de incertidumbre se obtienen como
+\begin{align}
+    U^2_{\mathrm{ale},j,*}
+    &=
+    \exp\!\left[\hat q_j(\tilde{\mathbf{z}}_*)\right],
+    \label{eq:b4_aleatoric}\\
+    U_{\mathrm{epi},j,*}
+    &=
+    \sigma_{f,j,*},
+    \label{eq:b4_epistemic}\\
+    U_{\mathrm{tot},j,*}
+    &=
+    \sqrt{
+        U^2_{\mathrm{epi},j,*}
+        +
+        U^2_{\mathrm{ale},j,*}
+    },
+    \label{eq:b4_total_uncertainty}
+\end{align}
+donde $\sigma_{f,j,*}$ es la desviación estándar posterior de la función latente del GP de media. Las magnitudes anteriores se presentan en unidades físicas después de invertir la estandarización común.
+
+La denominación $U_{\mathrm{ale}}$ se mantiene para conservar una taxonomía uniforme entre los modelos, pero su interpretación requiere cautela. Al aprenderse a partir de $e^{\mathrm{OOF}}$, esta componente puede reunir ruido irreducible, error del modelo de media y variabilidad entre grupos. Por ello, en B4 representa una \emph{estimación heteroscedástica de la dispersión residual}, no una medición pura del ruido aleatorio físico.
+
+El Cuadro~\ref{tab:b4_configuration} resume las decisiones propias de B4. Los datos, la partición congelada y la estandarización son los definidos en el entorno común; por tanto, no se repiten aquí.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Configuración específica del modelo B4.}
+    \label{tab:b4_configuration}
+    \begin{tabular}{@{}lp{0.60\linewidth}@{}}
+        \toprule
+        Elemento & Configuración \\
+        \midrule
+        Función en el estudio
+            & Extensión heteroscedástica y ablación directa de B2 \\
+        Etapa de media
+            & Los dos GP exactos ARD-SE de B2, sin modificaciones \\
+        Etapa de dispersión
+            & Dos GP independientes ajustados sobre residuos fuera de pliegue \\
+        Objetivo de la segunda etapa
+            & Logaritmo del residuo cuadrático con corrección $c_{\chi^2}=-1.27036$ \\
+        Semilla
+            & 42 \\
+        $U_{\mathrm{epi}}$
+            & Desviación posterior latente del GP de media \\
+        $U_{\mathrm{ale}}$
+            & Estimación heteroscedástica de la dispersión residual \\
+        Incertidumbre total
+            & Combinación cuadrática de $U_{\mathrm{epi}}$ y $U_{\mathrm{ale}}$ \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+Como B4 conserva la etapa de media de B2, ambos producen exactamente los mismos errores puntuales en validación y prueba ID. Esta igualdad constituye una comprobación de consistencia del artefacto y permite atribuir cualquier diferencia probabilística exclusivamente a la segunda etapa. El Cuadro~\ref{tab:b4_residual_performance} presenta las métricas correspondientes.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Desempeño de la media de B4 en la predicción del residual a $20\,\mathrm{ms}$.}
+    \label{tab:b4_residual_performance}
+    \begin{tabular}{@{}lcccc@{}}
+        \toprule
+        & \multicolumn{2}{c}{$d_{v_y}$ ($\mathrm{m/s}$)}
+        & \multicolumn{2}{c}{$d_r$ ($\mathrm{rad/s}$)} \\
+        \cmidrule(lr){2-3}\cmidrule(l){4-5}
+        Partición & RMSE & MAE & RMSE & MAE \\
+        \midrule
+        Validación & 0.008791 & 0.005860 & 0.006884 & 0.004620 \\
+        Prueba ID  & 0.010684 & 0.008057 & 0.008624 & 0.006552 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+Los diagnósticos del Cuadro~\ref{tab:b4_uncertainty_diagnostics} muestran que, en prueba ID, la dispersión residual domina la incertidumbre total y presenta un orden de magnitud similar al estimado por B3, aunque los dos modelos la obtienen mediante mecanismos diferentes. La cobertura queda por debajo del $95$\,\% nominal, especialmente para $d_{v_y}$, de modo que B4 también resulta ligeramente sobreconfiado en esta partición.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Diagnósticos probabilísticos de B4 en prueba ID.}
+    \label{tab:b4_uncertainty_diagnostics}
+    \begin{tabular}{@{}lcc@{}}
+        \toprule
+        Magnitud & $d_{v_y}$ & $d_r$ \\
+        \midrule
+        $U_{\mathrm{epi}}$ medio
+            & $0.001766\,\mathrm{m/s}$ & $0.001841\,\mathrm{rad/s}$ \\
+        $U_{\mathrm{ale}}$ medio
+            & $0.009608\,\mathrm{m/s}$ & $0.007899\,\mathrm{rad/s}$ \\
+        $U_{\mathrm{tot}}$ medio
+            & $0.009873\,\mathrm{m/s}$ & $0.008252\,\mathrm{rad/s}$ \\
+        Cobertura del intervalo del $95$\,\%
+            & $90.23$\,\% & $91.88$\,\% \\
+        NLL gaussiano
+            & $-3.0422$ & $-3.3273$ \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+En validación, las coberturas fueron $93.71$\,\% para $d_{v_y}$ y $95.16$\,\% para $d_r$, con NLL de $-3.6606$ y $-3.7967$, respectivamente. La degradación observada al pasar a prueba ID evidencia que una calibración cercana a la nominal en validación no garantiza que se conserve entre grupos no utilizados durante el ajuste.
+
+La correlación de Spearman entre las incertidumbres instantáneas y el error absoluto se resume en el Cuadro~\ref{tab:b4_uncertainty_error_correlation}. $U_{\mathrm{ale}}$ presenta una asociación positiva, pero débil, mientras que $U_{\mathrm{epi}}$ es prácticamente no correlacionada con el error a un paso. En consecuencia, estas señales no deben interpretarse aisladamente como predictores directos del próximo error.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Correlación de Spearman entre incertidumbre y error absoluto de B4 en prueba ID.}
+    \label{tab:b4_uncertainty_error_correlation}
+    \begin{tabular}{@{}lcc@{}}
+        \toprule
+        Indicador & $|e_{v_y}|$ & $|e_r|$ \\
+        \midrule
+        $U_{\mathrm{epi}}$ & $-0.0776$ & $-0.0339$ \\
+        $U_{\mathrm{ale}}$ & $0.1407$ & $0.0849$ \\
+        $U_{\mathrm{tot}}$ & $0.0425$ & $0.0377$ \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+Finalmente, B4 reproduce las mejoras de la media de B2 frente a B0: reduce el RMSE de $v_y$ en un $91.74$\,\% y el de $r$ en un $90.16$\,\%. Su aportación no reside en una nueva corrección media, sino en reemplazar la dispersión constante de B2 por una función dependiente de la entrada. Esta relación convierte la comparación B2--B4 en una ablación directa del efecto de modelar heteroscedasticidad.
+
 \section{Escenarios de cambio de distribución}
 
-% D7 actualizado: incluir fricción, masa/carga y rigidez lateral de
-% neumáticos como familias de cambios físicos, además de extrapolación
-% del rango de operación. No reducir la campaña a cambios de fricción.
-% Para cada familia definir: rango de entrenamiento, rango de evaluación,
-% magnitud y evolución temporal del cambio, variables observadas/estimadas
-% y verdad de referencia disponible solo para análisis.
-% Comparar primero cambios aislados; seleccionar después combinaciones
-% físicamente coherentes. No confundir reparto de carga con masa total ni
-% forzar independencia entre parámetros que el modelo acopla.
-% Incluir cambios dentro del dominio como contraste: no todo cambio físico
-% es OOD y no todo OOD produce degradación relevante para control.
+La campaña experimental se organizó en diez escenarios, E0--E9, diseñados para separar cambios en la excitación, variaciones observables del punto de operación, modificaciones latentes de la dinámica y cambios que ocurren durante la ejecución. En todos los escenarios se evaluaron B0--B4 sobre las mismas corridas. B0 proporciona la referencia puramente física; B1 permite medir la capacidad de una corrección determinista; y B2--B4 permiten estudiar, además del error predictivo, la respuesta de las componentes de incertidumbre disponibles en cada modelo. Los parámetros aprendidos y las estadísticas de normalización permanecieron congelados durante toda la campaña; ningún escenario E0--E9 se utilizó para reentrenar o readaptar los modelos.
 
-\subsection{Cambio desconocido de fricción}
+El vehículo A corresponde a la configuración nominal empleada para generar los datos de entrenamiento. El vehículo B representa una configuración alternativa con cambios estructurales en propiedades como masa, inercias y neumáticos. La velocidad longitudinal $V_x$ forma parte del vector de entrada de los modelos residuales; en cambio, el coeficiente de adherencia $\mu$ y la identidad o los parámetros del vehículo no se entregan como entradas. Esta diferencia permite contrastar cambios observables de covariables con cambios dinámicos latentes.
 
-% Una de las familias de cambios físicos D7.
-% Comparar variaciones de \mu dentro y fuera del dominio de entrenamiento
-% y evaluar su efecto sobre dinámica, residual y control.
-% Indicar si \mu se supone conocida, estimada o no disponible.
+El Cuadro~\ref{tab:experimental_campaign_configuration} resume la configuración de las corridas. E0 utiliza corridas DLC y DLCT reservadas, no empleadas durante el entrenamiento, y constituye la referencia dentro de distribución. La maniobra \textit{single lane change} (SLC) se incorpora como una excitación no observada durante el ajuste. Los demás escenarios modifican una o más condiciones respecto de la referencia E0.
 
-% GUION DE SUBSECCIÓN A DESARROLLAR: Vehicle mass and loading variations.
-% Evaluar cambios de masa/carga entre recorridos; justificar cualquier
-% variación durante un recorrido. Precisar si el modelo representa reparto
-% de carga, centro de gravedad e inercia y cómo se mantiene su coherencia.
-% Separar masa real de masa nominal/estimada utilizada por el controlador.
+\begin{table}[htbp]
+    \centering
+    \small
+    \caption{Configuración de la campaña experimental E0--E9.}
+    \label{tab:experimental_campaign_configuration}
+    \begin{tabular}{@{}p{0.08\linewidth}p{0.10\linewidth}p{0.31\linewidth}p{0.14\linewidth}p{0.12\linewidth}p{0.10\linewidth}@{}}
+        \toprule
+        Reg. & Escenario & Maniobra o conjunto de evaluación
+            & $V_x$ ($\mathrm{km/h}$) & $\mu$ & Vehículo \\
+        \midrule
+        001 & E0 & DLC y DLCT; corridas reservadas & 60 & 1.0 & A \\
+        002 & E1 & SLC; maniobra nueva             & 60 & 1.0 & A \\
+        003 & E2 & DLC y DLCT                       & 50 & 1.0 & A \\
+        004 & E3 & DLC y DLCT                       & 70 & 1.0 & A \\
+        005 & E4 & DLC y DLCT                       & 60 & 0.8 & A \\
+        006 & E5 & DLC y DLCT                       & 60 & 0.6 & A \\
+        007 & E6 & DLC y DLCT                       & 60 & 0.3 & A \\
+        008 & E7 & SLC; maniobra nueva              & 60 & 0.6 & A \\
+        009 & E8 & DLC y DLCT                       & 60 & 1.0 & B \\
+        010 & E9 & DLC/DLCT continuo                & 60 & $1.0\rightarrow0.6$ & A \\
+        \bottomrule
+    \end{tabular}
+\end{table}
 
-% GUION DE SUBSECCIÓN A DESARROLLAR: Tire cornering stiffness variations.
-% Definir rigidez lateral delantera/trasera según el modelo elegido,
-% rangos de entrenamiento/evaluación y justificación física de variaciones.
-% Tratarla como parámetro difícil de medir directamente, no como magnitud
-% imposible de estimar. Distinguir rigidez lateral y límite de adherencia.
-% Evaluar el residual sin entregar al controlador el valor real oculto.
+El Cuadro~\ref{tab:experimental_campaign_purpose} presenta el tipo de cambio y la pregunta experimental asociada con cada escenario. La clasificación se refiere a la información disponible para los modelos, no solamente a la magnitud de la modificación física.
 
-\subsection{Ampliación del rango de velocidades}
+\begin{table}[htbp]
+    \centering
+    \small
+    \caption{Propósito de los escenarios de la campaña experimental.}
+    \label{tab:experimental_campaign_purpose}
+    \begin{tabular}{@{}p{0.10\linewidth}p{0.20\linewidth}p{0.25\linewidth}p{0.33\linewidth}@{}}
+        \toprule
+        Escenario & Cambio aplicado & Clasificación & Pregunta experimental \\
+        \midrule
+        E0
+            & Ninguno
+            & Referencia dentro de distribución
+            & ¿Los modelos aprendidos mantienen su capacidad predictiva en corridas nominales no utilizadas durante el entrenamiento? \\
+        E1
+            & Maniobra SLC
+            & Generalización de excitación
+            & ¿Generalizan a una trayectoria no vista cuando la configuración física permanece igual? \\
+        E2
+            & $V_x\downarrow$
+            & Cambio observable de covariable y punto de operación
+            & ¿Aumentan el error y $U_{\mathrm{epi}}$ al operar por debajo de la única velocidad de entrenamiento? \\
+        E3
+            & $V_x\uparrow$
+            & Cambio observable de covariable y punto de operación
+            & ¿Cómo responden la predicción y $U_{\mathrm{epi}}$ en un régimen superior y más exigente? \\
+        E4
+            & $\mu\downarrow$ moderado
+            & Cambio dinámico latente
+            & ¿Las incertidumbres reflejan una degradación causada por una variable física no observada? \\
+        E5
+            & $\mu\downarrow$ fuerte
+            & Cambio dinámico latente severo
+            & ¿Cómo evolucionan el error y las incertidumbres cuando aumenta la discrepancia dinámica? \\
+        E6
+            & $\mu\downarrow$ extremo
+            & Prueba extrema de la dinámica
+            & ¿Aparecen fallos confiados, caracterizados por error alto e incertidumbre epistémica baja? \\
+        E7
+            & Maniobra SLC y $\mu=0.6$
+            & Cambio combinado
+            & ¿Cómo se comportan los modelos al combinar una excitación no vista con un cambio dinámico latente? \\
+        E8
+            & Vehículo B
+            & Cambio estructural de la dinámica
+            & ¿Las incertidumbres reflejan cambios de masa, inercias y neumáticos no incluidos en el vector de entrada? \\
+        E9
+            & $\mu:1.0\rightarrow0.6$ durante la corrida
+            & Cambio dinámico durante la ejecución
+            & ¿Cómo evolucionan el error y las incertidumbres alrededor del instante de transición? \\
+        \bottomrule
+    \end{tabular}
+\end{table}
 
-% Familia de extrapolación del rango de operación D7:
-% V_x > V_{x,\max}^{train}.
-% Definir claramente V_{x,max}^{train} y separar extrapolación de estado
-% de cambios físicos de fricción, masa/carga o rigidez lateral.
+\subsection{Referencia nominal y generalización de excitación: E0--E1}
 
-\subsection{Fallo o degradación de sensores}
+E0 establece el nivel de desempeño dentro de la distribución conocida. Aunque mantiene las maniobras DLC y DLCT, la velocidad nominal, la adherencia y el vehículo A, utiliza corridas completas que no participaron en el ajuste. Por tanto, E0 mide generalización entre corridas nominales y no desempeño sobre las muestras de entrenamiento. Sus errores e incertidumbres sirven como referencia para interpretar todos los incrementos observados en E1--E9.
 
-% Escenario opcional D7.
-% Definir tipo de fallo, variable afectada y por qué constituye un shift
-% relevante para el modelo/control. No incluirlo si no puede aislarse
-% experimentalmente.
+E1 mantiene $V_x=60\,\mathrm{km/h}$, $\mu=1$ y el vehículo A, pero sustituye las maniobras de identificación por una única maniobra SLC. Este aislamiento permite evaluar la generalización ante un patrón de excitación no visto sin introducir simultáneamente un cambio en los parámetros físicos. La comparación principal es E1 frente a E0.
 
-\subsection{Entradas fuera de distribución}
+\subsection{Cambios observables del punto de operación: E2--E3}
 
-% Escenario opcional D3.
-% Añadir solo si existe tiempo suficiente y una definición operacional
-% clara diferente de dynamics OOD.
+E2 y E3 evalúan la extrapolación respecto de la única velocidad longitudinal presente en el entrenamiento. E2 reduce $V_x$ de 60 a $50\,\mathrm{km/h}$ y E3 la aumenta a $70\,\mathrm{km/h}$, manteniendo $\mu=1$, el vehículo A y las familias de maniobras DLC y DLCT. Como $V_x$ es una entrada de B1--B4, estos escenarios constituyen cambios observables de covariable y permiten comprobar si la incertidumbre epistémica de los modelos probabilísticos responde al alejamiento del dominio nominal. La evaluación separada de E2 y E3 permite, además, identificar una posible asimetría entre extrapolar hacia velocidades menores y hacerlo hacia un régimen más exigente.
+
+\subsection{Cambios dinámicos latentes de adherencia: E4--E6}
+
+E4--E6 forman una secuencia de severidad creciente en la que se mantienen $V_x=60\,\mathrm{km/h}$, el vehículo A y las maniobras DLC y DLCT, mientras $\mu$ disminuye desde el valor nominal 1.0 hasta 0.8, 0.6 y 0.3. Dado que $\mu$ no pertenece al vector de entrada, estos escenarios modifican la relación entrada--salida de la planta sin proporcionar al modelo una indicación directa de la causa.
+
+E4 representa una perturbación moderada; E5, un cambio fuerte; y E6, una prueba extrema. El análisis conjunto de los tres escenarios permite determinar si el error crece monótonamente con la discrepancia física y si $U_{\mathrm{epi}}$, $U_{\mathrm{ale}}$ o $U_{\mathrm{tot}}$ acompañan ese crecimiento. E6 se utiliza de manera específica para buscar fallos confiados: intervalos en los que el error aumenta sin un incremento proporcional de la incertidumbre.
+
+\subsection{Cambio combinado de maniobra y adherencia: E7}
+
+E7 combina las dos modificaciones aisladas anteriormente: emplea la maniobra SLC no vista y reduce la adherencia a $\mu=0.6$, manteniendo $V_x=60\,\mathrm{km/h}$ y el vehículo A. Las referencias naturales para su interpretación son E1, que contiene solamente el cambio de maniobra, y E5, que contiene solamente el mismo cambio de adherencia. Esta comparación permite examinar si la degradación conjunta puede explicarse a partir de los cambios aislados o si aparece una interacción adicional entre excitación y dinámica.
+
+\subsection{Cambio estructural del vehículo: E8}
+
+E8 conserva las condiciones nominales de maniobra, velocidad y adherencia, pero sustituye el vehículo A por el vehículo B. El escenario agrupa variaciones estructurales de masa, inercias y propiedades de los neumáticos que no se incluyen de forma explícita en el vector de entrada de los modelos aprendidos. Su comparación directa con E0 permite estudiar la sensibilidad al cambio de plataforma sin confundirla con variaciones de velocidad, superficie o maniobra. Al igual que en los escenarios de adherencia, los valores reales de los parámetros modificados se utilizan para definir y analizar la prueba, pero no se proporcionan como entradas a B1--B4.
+
+\subsection{Cambio abrupto durante la ejecución: E9}
+
+E9 introduce una dimensión temporal ausente en los escenarios anteriores. Durante una ejecución continua basada en DLC/DLCT, $\mu$ cambia abruptamente de 1.0 a 0.6, mientras se mantienen $V_x=60\,\mathrm{km/h}$ y el vehículo A. En lugar de resumir solamente el desempeño de toda la corrida, este escenario se analiza alrededor del instante de transición. El objetivo es caracterizar la evolución temporal del error y de las incertidumbres, así como cualquier retraso entre el cambio físico, la degradación predictiva y la respuesta de los indicadores disponibles. E0 y E5 proporcionan las referencias estacionarias antes y después del cambio, respectivamente.
 
 \section{Modelo aprendido e incertidumbre}
 
