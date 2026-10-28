@@ -967,11 +967,86 @@ cambios de distribución y la validez durante la operación.
 
 \section{Incertidumbre predictiva}
 
+Una predicción puntual del residual indica la corrección que el modelo
+considera más probable, pero no expresa cuánta dispersión atribuye a esa
+estimación. Los modelos probabilísticos representan cada componente
+$d_{j,k}$ mediante una distribución predictiva condicionada a la entrada y a
+los datos de entrenamiento,
+\begin{equation}
+    p\!\left(d_{j,k}\mid\mathbf{z}_k,\mathcal{D}_{\mathrm{tr}}\right),
+    \qquad j\in\{v_y,r\}.
+    \label{eq:predictive_residual_distribution}
+\end{equation}
+En las configuraciones estudiadas, esta distribución se describe mediante
+una media $\mu_{j,k}$ y una varianza predictiva. Para facilitar el análisis,
+la varianza total se descompone operacionalmente como
+\begin{equation}
+    U^2_{\mathrm{tot},j,k}
+    =
+    U^2_{\mathrm{ale},j,k}
+    +
+    U^2_{\mathrm{epi},j,k},
+    \label{eq:predictive_uncertainty_decomposition}
+\end{equation}
+donde $U_{\mathrm{ale}}$ representa la dispersión condicional atribuida a la
+variabilidad aleatoria y $U_{\mathrm{epi}}$ la incertidumbre asociada al
+conocimiento del modelo. Esta separación depende del modelo y del
+procedimiento de estimación: sus componentes no son magnitudes físicas
+observadas directamente ni quedan identificadas de manera única a partir de
+los datos.
+
+La incertidumbre predictiva se utiliza aquí como información de supervisión
+del residual, no como sinónimo de error. Una desviación estándar elevada no
+demuestra que la media sea incorrecta y una desviación pequeña no garantiza
+que la predicción sea válida. Su utilidad debe establecerse contrastándola
+con los errores observados, con los cambios de distribución y, finalmente,
+con las consecuencias de esos errores para el controlador.
+
 \subsection{Incertidumbre aleatoria}
 
 % Definición, interpretación y papel dentro del modelo heteroscedástico.
 % Relacionar con ruido/variabilidad no reducible bajo los supuestos del
 % modelo, evitando equipararla automáticamente con invalidity.
+
+La incertidumbre aleatoria describe la variabilidad que permanece en la
+salida después de condicionar la predicción a las variables proporcionadas al
+modelo. Puede reunir ruido de medición, perturbaciones no observadas y
+variaciones de la planta que las entradas seleccionadas no permiten explicar.
+Se considera no reducible bajo la representación y la información disponibles,
+aunque puede cambiar si se incorporan nuevas variables, se modifica el modelo
+o mejora el sistema de medición. Por esta razón, la separación entre
+incertidumbre aleatoria y error de modelado debe interpretarse con relación a
+los supuestos adoptados, y no como una clasificación absoluta
+\cite{Brunke2022Safe}.
+
+Cuando se supone una dispersión constante para todo el espacio de entrada, el
+modelo es homoscedástico. Esta hipótesis se utiliza en B2, donde el término
+$\sigma_{n,j}^{2}$ de la ecuación~\eqref{eq:b2_gp_observation_model} es único
+para cada componente del residual. Un modelo heteroscedástico permite, en
+cambio, que la dispersión dependa de $\mathbf{z}_k$:
+\begin{equation}
+    d_{j,k}
+    =
+    \mu_j(\mathbf{z}_k)
+    +
+    \varepsilon_{j,k},
+    \qquad
+    \varepsilon_{j,k}\sim
+    \mathcal{N}\!\left(0,U^2_{\mathrm{ale},j}(\mathbf{z}_k)\right).
+    \label{eq:heteroscedastic_residual_model}
+\end{equation}
+B3 aprende esta dispersión junto con la media mediante una función de pérdida
+gaussiana heteroscedástica, mientras que B4 la estima en una segunda etapa a
+partir de residuos fuera de pliegue. En ambos casos,
+$U_{\mathrm{ale}}$ debe leerse como una estimación operacional de la
+dispersión residual. Puede contener no solo ruido físico, sino también
+discrepancias de la media y variabilidad no explicada entre corridas.
+
+Una región con elevada dispersión condicional puede seguir perteneciendo al
+dominio de entrenamiento, y un cambio físico no observado puede producir un
+error sistemático sin incrementar esta componente. En consecuencia, la
+incertidumbre aleatoria aporta información sobre la amplitud esperada de los
+errores, pero no establece por sí sola que el residual haya perdido validez.
 
 \subsection{Incertidumbre epistémica}
 
@@ -980,11 +1055,113 @@ cambios de distribución y la validez durante la operación.
 % Relacionarla con regiones poco representadas, pero no afirmar que
 % epistemic uncertainty sea equivalente a OOD.
 
+La incertidumbre epistémica representa la falta de conocimiento asociada a
+datos finitos, cobertura insuficiente del dominio y ambigüedad en el ajuste
+del modelo. A diferencia de la componente aleatoria, puede reducirse en
+principio mediante observaciones informativas en las regiones pertinentes,
+aunque la reducción efectiva depende de la capacidad de la familia de modelos
+para representar la dinámica \cite{Brunke2022Safe}.
+
+Esta componente se aproxima de dos maneras en las configuraciones
+probabilísticas. En los procesos gaussianos B2 y B4 se utiliza la desviación
+posterior de la función latente, que depende de la ubicación de la consulta
+respecto de los datos de entrenamiento y del kernel seleccionado. En B3 se
+emplea el desacuerdo entre las medias de los miembros del conjunto:
+\begin{equation}
+    U^2_{\mathrm{epi},j,k}
+    =
+    \frac{1}{M}
+    \sum_{m=1}^{M}
+    \left(
+        \mu^{(m)}_{j,k}-\bar{\mu}_{j,k}
+    \right)^2,
+    \qquad
+    \bar{\mu}_{j,k}
+    =
+    \frac{1}{M}\sum_{m=1}^{M}\mu^{(m)}_{j,k}.
+    \label{eq:ensemble_epistemic_uncertainty}
+\end{equation}
+El desacuerdo refleja sensibilidad a distintas soluciones obtenidas durante
+el entrenamiento, pero no cubre todas las fuentes de desconocimiento. Los
+miembros pueden compartir datos, arquitectura y sesgos de representación y,
+por tanto, coincidir en una predicción errónea.
+
+Es esperable que $U_{\mathrm{epi}}$ aumente en regiones escasamente
+representadas, pero esta respuesta no está garantizada ante cualquier cambio.
+En particular, una modificación de adherencia, masa o neumáticos que no forme
+parte de $\mathbf{z}_k$ puede alterar la relación entrada--salida sin desplazar
+visiblemente las entradas. La incertidumbre epistémica y la detección fuera de
+distribución son, por tanto, conceptos relacionados pero no equivalentes: una
+entrada alejada puede no causar un error relevante y un cambio dinámico
+latente puede producir un fallo confiado.
+
 \subsection{Calibración}
 
 % Explicar por qué no basta con producir una varianza: la incertidumbre
 % debe contrastarse con la frecuencia/magnitud real de los errores.
 % Definir las métricas de calibration que finalmente se utilicen.
+
+La calibración contrasta las distribuciones predictivas con los errores que
+se observan posteriormente. Para una aproximación gaussiana con desviación
+$U_{\mathrm{tot},j,k}$, un intervalo bilateral con nivel nominal
+$1-\alpha$ se define como
+\begin{equation}
+    \mathcal{I}_{j,k}^{1-\alpha}
+    =
+    \left[
+        \mu_{j,k}-q_{1-\alpha/2}U_{\mathrm{tot},j,k},
+        \mu_{j,k}+q_{1-\alpha/2}U_{\mathrm{tot},j,k}
+    \right],
+    \label{eq:predictive_interval}
+\end{equation}
+donde $q_{1-\alpha/2}$ es el cuantil correspondiente de la distribución
+normal estándar. La cobertura empírica sobre $N$ observaciones es
+\begin{equation}
+    \widehat{\mathrm{Cov}}_{j}^{1-\alpha}
+    =
+    \frac{1}{N}
+    \sum_{k=1}^{N}
+    \mathbb{I}\!\left\{
+        d_{j,k}\in\mathcal{I}_{j,k}^{1-\alpha}
+    \right\}.
+    \label{eq:empirical_predictive_coverage}
+\end{equation}
+Una cobertura inferior al nivel nominal indica sobreconfianza, mientras que
+una cobertura superior puede indicar intervalos conservadores. Sin embargo,
+la cobertura aislada no recompensa la concentración: intervalos
+innecesariamente amplios pueden cubrir muchas observaciones y aportar poca
+información.
+
+Por este motivo se utiliza también la log-verosimilitud negativa gaussiana,
+que combina el error de la media con la dispersión declarada:
+\begin{equation}
+    \mathrm{NLL}_j
+    =
+    \frac{1}{N}
+    \sum_{k=1}^{N}
+    \left[
+        \frac{1}{2}\log\!\left(2\pi U^2_{\mathrm{tot},j,k}\right)
+        +
+        \frac{\left(d_{j,k}-\mu_{j,k}\right)^2}
+             {2U^2_{\mathrm{tot},j,k}}
+    \right].
+    \label{eq:gaussian_predictive_nll}
+\end{equation}
+La evaluación conjunta de cobertura y NLL permite detectar tanto
+sobreconfianza como dispersiones excesivas. Cuando la predicción procede de
+una mezcla, como en el conjunto B3, debe indicarse si la NLL corresponde a la
+mezcla exacta o a una aproximación gaussiana obtenida mediante ajuste de
+momentos.
+
+La calibración debe comprobarse en particiones no utilizadas para ajustar el
+modelo y desglosarse por región y familia de cambio. Una cobertura adecuada en
+promedio dentro del dominio nominal puede ocultar errores locales y no
+garantiza que los intervalos permanezcan calibrados cuando cambia la dinámica.
+Además, calibrar el error residual a un paso no demuestra que la incertidumbre
+represente el error acumulado sobre el horizonte ni su efecto en lazo cerrado.
+Por ello, la calibración constituye una condición de calidad para interpretar
+las señales probabilísticas, pero no una definición suficiente de validez
+para el control.
 
 \section{Detección fuera de distribución y cambios de distribución en la dinámica vehicular}
 
