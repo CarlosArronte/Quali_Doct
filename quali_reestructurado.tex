@@ -1167,12 +1167,93 @@ para el control.
 
 % Separar explícitamente las categorías operacionales elegidas.
 
+El dominio de entrenamiento no queda definido únicamente por los intervalos
+de cada variable de entrada. También comprende las combinaciones de estados e
+inputs, las maniobras que generan esas combinaciones y la relación dinámica
+entre las entradas del modelo y el residual observado. Para expresar esta
+distinción, la distribución conjunta puede factorizarse como
+\begin{equation}
+    p(\mathbf{z},\mathbf{d})
+    =
+    p(\mathbf{d}\mid\mathbf{z})\,p(\mathbf{z}),
+    \label{eq:joint_shift_factorization}
+\end{equation}
+donde $\mathbf{z}$ contiene las variables disponibles para el predictor y
+$\mathbf{d}$ es la discrepancia modelo--planta. Durante la operación puede
+cambiar la distribución de las entradas $p(\mathbf{z})$, la relación
+condicional $p(\mathbf{d}\mid\mathbf{z})$ o ambas. Esta separación resulta
+importante porque un detector basado exclusivamente en las entradas puede
+identificar un alejamiento del dominio observado, pero no necesariamente un
+cambio de la dinámica condicionado por un parámetro que el modelo no recibe.
+
+En este trabajo, el término fuera de distribución se utiliza siempre con
+respecto a un dominio de referencia explícito y a una representación
+determinada. No se considera una propiedad absoluta de una muestra. Además,
+detectar un cambio de distribución no demuestra que el residual haya perdido
+utilidad, del mismo modo que un error elevado no exige que las entradas sean
+estadísticamente atípicas. La finalidad del indicador OOD es aportar una señal
+de alejamiento que deberá contrastarse con el error predictivo y con su efecto
+en el control. Esta precaución es especialmente relevante en control basado en
+aprendizaje, donde los cambios de distribución y la escasez de datos pueden
+afectar la generalización sin determinar por sí solos la consecuencia en lazo
+cerrado \cite{Brunke2022Safe}.
+
 \subsection{Régimen físico no representado}
 
 % Caso principal: cambios de parámetros/condiciones físicas no presentes
 % durante entrenamiento: variaciones de fricción, masa/carga o rigidez
 % lateral. Definir para cada caso el dominio de entrenamiento y la
 % información disponible; no equiparar parámetro desconocido con OOD.
+
+Un régimen físico se caracteriza por las condiciones del contacto
+neumático--carretera y por los parámetros que determinan la respuesta del
+vehículo. De forma compacta, estas magnitudes pueden reunirse en
+\begin{equation}
+    \boldsymbol{\vartheta}_k
+    =
+    \begin{bmatrix}
+        \mu_k & m_k & I_{z,k} & C_{f,k} & C_{r,k} & \cdots
+    \end{bmatrix}^{\mathsf T},
+    \label{eq:physical_regime_vector}
+\end{equation}
+donde $\mu$ representa la adherencia, $m$ la masa, $I_z$ el momento de
+inercia de guiñada y $C_f$ y $C_r$ las rigideces laterales equivalentes. Un
+régimen físico no representado aparece cuando la configuración utilizada
+durante la operación no pertenece al conjunto de configuraciones con las que
+se generaron los datos de entrenamiento. La definición depende, por tanto, de
+qué parámetros se variaron y de qué rangos quedaron cubiertos en ese conjunto.
+
+La condición de parámetro desconocido debe distinguirse de la de parámetro no
+representado. Si un valor físico permanece fijo tanto durante el entrenamiento
+como durante la operación, el residual puede aprender parte de la discrepancia
+que produce aunque el controlador no conozca ese valor. Existe incertidumbre
+paramétrica respecto del modelo físico, pero no necesariamente un cambio de
+distribución. En cambio, si la adherencia, la masa, la carga o las propiedades
+de los neumáticos se apartan de las configuraciones usadas para entrenar el
+residual, puede cambiar la relación entre $\mathbf{z}_k$ y
+$\mathbf{d}_k$. Los trabajos sobre control y modelado adaptativo muestran que
+estas magnitudes intervienen de formas distintas en la respuesta vehicular y
+que su variación puede requerir adaptar el modelo o el controlador
+\cite{Yeneneh2026AutoDyn,Kalaria2024Adaptive,Zhou2025Hybrid}.
+
+En la arquitectura de esta tesis, los valores reales de
+$\boldsymbol{\vartheta}_k$ se utilizan para configurar la planta de referencia
+y describir los escenarios experimentales, pero no se suministran al residual
+cuando el protocolo los declara no disponibles. Así, una reducción de
+adherencia o un cambio de vehículo puede constituir un cambio físico latente:
+el predictor recibe $V_x$, $v_y$, $r$ y $\delta$, pero no recibe una etiqueta
+que identifique directamente la nueva configuración. El objetivo no es
+recuperar cada componente de $\boldsymbol{\vartheta}_k$, sino determinar si la
+corrección aprendida continúa describiendo la discrepancia de forma útil para
+el controlador.
+
+No todo cambio físico implica pérdida de validez. Una variación moderada puede
+tener un efecto pequeño en los estados corregidos o quedar parcialmente
+absorbida por la generalización del residual. Por ello, los escenarios deben
+ordenarse por familia y severidad y evaluarse frente a una referencia nominal.
+La etiqueta de régimen no representado identifica la causa experimental del
+cambio; la degradación del residual y su relevancia para el control deben
+medirse por separado.
 
 \subsection{Dinámica fuera de distribución}
 
@@ -1183,6 +1264,55 @@ para el control.
 % o neumáticos puede alterar la dinámica aun con estados/entradas familiares.
 % Definir categorías y etiquetas experimentales sin asumir que un detector
 % basado solo en entradas identificará todos esos cambios.
+
+Se denomina dinámica fuera de distribución a una transición o región de
+operación cuya relación entre estado, entrada y respuesta no está
+suficientemente representada por los datos de entrenamiento. En términos de
+la ecuación~\eqref{eq:joint_shift_factorization}, el caso más directo ocurre
+cuando
+\begin{equation}
+    p_{\mathrm{op}}(\mathbf{d}\mid\mathbf{z})
+    \neq
+    p_{\mathrm{tr}}(\mathbf{d}\mid\mathbf{z}),
+    \label{eq:conditional_dynamics_shift}
+\end{equation}
+para una región relevante para la maniobra. La desigualdad representa una
+diferencia operacional que deberá cuantificarse mediante el error y los
+indicadores seleccionados; no presupone que las distribuciones sean conocidas
+analíticamente.
+
+Esta situación puede alcanzarse por dos vías. En la primera, el vehículo entra
+en una región observable del espacio de operación que no fue cubierta durante
+el entrenamiento. Por ejemplo, si el residual se ajustó a una única velocidad
+longitudinal, operar por debajo o por encima de ella exige extrapolar respecto
+de $V_x$, aunque la configuración física permanezca fija. En la segunda, las
+entradas pueden conservar valores familiares mientras cambia una variable
+latente de la planta. Una modificación de adherencia, masa o neumáticos puede
+producir entonces un residual distinto para valores similares de
+$\mathbf{z}_k$. El primer caso combina desplazamiento de covariables y posible
+extrapolación dinámica; el segundo corresponde a un cambio condicional que no
+tiene por qué ser visible en el espacio de entrada.
+
+Esta distinción determina qué puede detectar cada mecanismo. Un indicador de
+distancia o densidad calculado sobre $\mathbf{z}_k$ es adecuado para señalar
+regiones poco cubiertas de estados e inputs, pero puede permanecer bajo frente
+a un cambio físico latente. Un indicador basado en innovaciones o errores
+observados puede responder a este último, aunque solo después de disponer de
+la respuesta de la planta y puede confundir el cambio dinámico con ruido o con
+un fallo sensorial. Por tanto, ningún indicador aislado se adopta como prueba
+universal de dinámica OOD.
+
+La metodología materializa estas categorías mediante escenarios separados.
+Los cambios de velocidad representan extrapolaciones observables del punto de
+operación; las variaciones de adherencia y de configuración del vehículo
+representan cambios dinámicos latentes; y los cambios durante una corrida
+permiten estudiar la respuesta temporal de los indicadores. Las tablas
+\ref{tab:experimental_campaign_configuration} y
+\ref{tab:experimental_campaign_purpose} documentan el dominio nominal, la
+información disponible y la comparación prevista para cada caso. Esta
+clasificación permite analizar si un cambio fue detectado, si degradó la
+predicción y si esa degradación fue relevante para el control como preguntas
+relacionadas, pero diferentes.
 
 \subsection{Entradas fuera de distribución}
 
