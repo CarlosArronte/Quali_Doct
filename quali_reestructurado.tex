@@ -1886,6 +1886,7 @@ privilegiada sobre el cambio físico.
 \end{enumerate}
 
 \section{Entorno común de entrenamiento y evaluación de los modelos}
+\label{sec:entorno_comun_modelos}
 
 Los modelos B1--B4 se construyen sobre el mismo modelo físico B0 y utilizan un entorno experimental común. Esta decisión permite atribuir las diferencias observadas al tipo de modelo residual y a su representación de la incertidumbre, sin confundirlas con cambios en los datos, la partición o el preprocesamiento. En esta sección se documentan una sola vez el modelo nominal, el dominio de identificación, la partición congelada y el protocolo de evaluación. Las secciones dedicadas a cada modelo describen únicamente sus particularidades.
 
@@ -2004,10 +2005,12 @@ Los vectores $\boldsymbol{\mu}_z$ y $\boldsymbol{\mu}_d$ contienen las medias de
 La capacidad predictiva se evalúa por componente mediante RMSE y MAE del residual. Además, la predicción híbrida a un paso se compara con B0 sobre las mismas transiciones de prueba ID. Para los modelos probabilísticos se añaden métricas de incertidumbre y calibración, pero estas se definen en las secciones particulares correspondientes. Los escenarios externos al dominio nominal no intervienen en el entrenamiento ni en la selección y se reservan para el estudio de pérdida de validez.
 
 \section{Descripción de los modelos entrenados}
+\label{sec:descripcion_modelos_entrenados}
 
 Cada modelo se presenta a partir de su función dentro del estudio, su estructura específica, el criterio de entrenamiento o selección y su verificación en la partición común. El dominio de datos, las variables, la normalización y la partición no se repiten en las descripciones individuales.
 
 \subsection{B1: MLP residual determinista}
+\label{sec:modelo_b1}
 
 B1 es la línea base residual determinista. Su función es establecer cuánto puede reducirse el error de B0 mediante una corrección neuronal puntual, sin incorporar todavía una distribución predictiva, una descomposición de incertidumbre ni un mecanismo de supervisión de validez. La salida de B1 es la estimación de las dos componentes del residual a un paso.
 
@@ -2112,6 +2115,7 @@ Finalmente, el Cuadro~\ref{tab:b1_physics_hybrid_comparison} compara la predicci
 \end{table}
 
 \subsection{B2: proceso gaussiano homoscedástico}
+\label{sec:modelo_b2}
 
 B2 reemplaza la MLP determinista de B1 por dos procesos gaussianos (GP) independientes, uno para $d_{v_y}$ y otro para $d_r$. Su función en el estudio es conservar una capacidad de corrección comparable con B1 y añadir una distribución predictiva que permita cuantificar la incertidumbre dentro y fuera del dominio nominal. La independencia entre las dos salidas simplifica el entrenamiento, aunque implica que B2 no modela explícitamente su covarianza cruzada.
 
@@ -2260,6 +2264,7 @@ La comparación a un paso del Cuadro~\ref{tab:b2_physics_hybrid_comparison} conf
 \end{table}
 
 \subsection{B3: conjunto profundo de MLP heteroscedásticas}
+\label{sec:modelo_b3}
 
 B3 utiliza un \textit{deep ensemble} formado por cinco MLP heteroscedásticas. A diferencia de B1, cada miembro predice simultáneamente la media y la varianza condicional de las dos componentes del residual. A diferencia de B2, la dispersión aleatoria puede cambiar con la entrada y la incertidumbre epistémica se aproxima mediante el desacuerdo entre redes entrenadas de forma independiente.
 
@@ -2448,6 +2453,7 @@ Finalmente, el Cuadro~\ref{tab:b3_physics_hybrid_comparison} muestra la comparac
 \end{table}
 
 \subsection{B4: proceso gaussiano heteroscedástico en dos etapas}
+\label{sec:modelo_b4}
 
 B4 conserva sin modificaciones los dos GP de media de B2 y añade una segunda etapa destinada a estimar una dispersión residual dependiente de la entrada. Esta construcción permite aislar el efecto de la heteroscedasticidad: B2 y B4 comparten la misma media predictiva y la misma incertidumbre epistémica latente, mientras que difieren en el tratamiento de la dispersión residual, constante en B2 y variable en B4.
 
@@ -2592,6 +2598,7 @@ La correlación de Spearman entre las incertidumbres instantáneas y el error ab
 Finalmente, B4 reproduce las mejoras de la media de B2 frente a B0: reduce el RMSE de $v_y$ en un $91.74$\,\% y el de $r$ en un $90.16$\,\%. Su aportación no reside en una nueva corrección media, sino en reemplazar la dispersión constante de B2 por una función dependiente de la entrada. Esta relación convierte la comparación B2--B4 en una ablación directa del efecto de modelar heteroscedasticidad.
 
 \section{Escenarios de cambio de distribución}
+\label{sec:escenarios_cambio_distribucion}
 
 La campaña experimental se organizó en diez escenarios, E0--E9, diseñados para separar cambios en la excitación, variaciones observables del punto de operación, modificaciones latentes de la dinámica y cambios que ocurren durante la ejecución. En todos los escenarios se evaluaron B0--B4 sobre las mismas corridas. B0 proporciona la referencia puramente física; B1 permite medir la capacidad de una corrección determinista; y B2--B4 permiten estudiar, además del error predictivo, la respuesta de las componentes de incertidumbre disponibles en cada modelo. Los parámetros aprendidos y las estadísticas de normalización permanecieron congelados durante toda la campaña; ningún escenario E0--E9 se utilizó para reentrenar o readaptar los modelos.
 
@@ -2707,15 +2714,137 @@ E8 conserva las condiciones nominales de maniobra, velocidad y adherencia, pero 
 E9 introduce una dimensión temporal ausente en los escenarios anteriores. Durante una ejecución continua basada en DLC/DLCT, $\mu$ cambia abruptamente de 1.0 a 0.6, mientras se mantienen $V_x=60\,\mathrm{km/h}$ y el vehículo A. En lugar de resumir solamente el desempeño de toda la corrida, este escenario se analiza alrededor del instante de transición. El objetivo es caracterizar la evolución temporal del error y de las incertidumbres, así como cualquier retraso entre el cambio físico, la degradación predictiva y la respuesta de los indicadores disponibles. E0 y E5 proporcionan las referencias estacionarias antes y después del cambio, respectivamente.
 
 \section{Modelo aprendido e incertidumbre}
+\label{sec:modelo_aprendido_incertidumbre_metodologia}
 
-% D4:
-% - heteroscedastic model;
-% - small ensemble;
-% - aleatoric + epistemic;
-% - calibration;
-% - cheap OOD score.
-%
-% Reportar costo computacional porque el uso es runtime.
+Las estructuras, los criterios de ajuste y los resultados dentro del dominio
+nominal de B1--B4 se presentan en la
+Sección~\ref{sec:descripcion_modelos_entrenados}. En esta etapa metodológica
+los modelos no vuelven a entrenarse: se utilizan como artefactos congelados
+para generar, sobre las mismas transiciones de cada escenario de la
+Sección~\ref{sec:escenarios_cambio_distribucion}, la corrección residual y las
+señales de incertidumbre disponibles. De esta forma, cualquier diferencia
+entre escenarios se atribuye a la condición evaluada y no a una readaptación
+del predictor.
+
+Para cada modelo $b$, escenario $s$ e instante $k$ se conserva un registro
+común,
+\begin{equation}
+    \mathcal{R}^{(b,s)}_k
+    =
+    \left\{
+        \mathbf z_k,
+        \mathbf d_k,
+        \bar{\mathbf d}^{(b)}_k,
+        \mathbf e^{(b)}_{d,k},
+        \mathbf U^{(b)}_{\mathrm{epi},k},
+        \mathbf U^{(b)}_{\mathrm{ale},k},
+        \mathbf U^{(b)}_{\mathrm{tot},k},
+        S_{\mathrm{OOD},k},
+        t^{(b)}_{\mathrm{inf},k}
+    \right\}.
+    \label{eq:common_uncertainty_record}
+\end{equation}
+La discrepancia observada $\mathbf d_k$ y el error
+$\mathbf e^{(b)}_{d,k}$, definido conforme a la
+ecuación~\eqref{eq:physics_hybrid_residual_errors}, se calculan después de
+recibir la transición de CarSim y se emplean únicamente como verdad de
+referencia para la evaluación. No forman parte de las señales disponibles al
+tomar la acción de control. El tiempo $t^{(b)}_{\mathrm{inf},k}$ incluye la
+predicción de la media y, cuando corresponda, la obtención de sus componentes
+de incertidumbre.
+
+B1 proporciona solo $\bar{\mathbf d}^{(1)}_k$ y actúa como referencia
+determinista; sus campos de incertidumbre se registran como no disponibles y
+no como ceros. B2--B4 proporcionan una media y una caracterización
+probabilística, con las definiciones específicas de las
+Secciones~\ref{sec:modelo_b2}, \ref{sec:modelo_b3} y \ref{sec:modelo_b4}.
+Esta distinción evita interpretar la ausencia de una estimación como certeza
+perfecta. La semántica general de $U_{\mathrm{epi}}$, $U_{\mathrm{ale}}$ y
+$U_{\mathrm{tot}}$ es la establecida en la
+Sección~\ref{sec:incertidumbre_predictiva}; las diferencias entre sus
+estimadores se mantienen visibles durante el análisis y no se presentan como
+mediciones físicas equivalentes.
+
+Las dos salidas residuales poseen unidades y escalas diferentes. Por ello,
+antes de formar indicadores escalares, cada componente de incertidumbre se
+normaliza mediante la desviación estándar del objetivo calculada en la
+partición de entrenamiento, es decir,
+\begin{equation}
+    \widetilde U^{(b)}_{q,j,k}
+    =
+    \frac{U^{(b)}_{q,j,k}}{s_{d_j,\mathrm{tr}}},
+    \qquad
+    \widetilde U^{(b)}_{q,k}
+    =
+    \sqrt{
+        \frac{1}{2}
+        \sum_{j\in\{v_y,r\}}
+        \left(\widetilde U^{(b)}_{q,j,k}\right)^2
+    },
+    \quad
+    q\in\{\mathrm{epi},\mathrm{ale},\mathrm{tot}\}.
+    \label{eq:dimensionless_uncertainty_aggregation}
+\end{equation}
+Las señales por componente se conservan para los diagnósticos; la agregación
+se utiliza solo cuando el supervisor requiere una entrada escalar. Así se
+evita que una salida domine la combinación por su unidad o por su amplitud
+numérica. Dado que B2--B4 construyen la incertidumbre mediante mecanismos
+distintos, su comparación principal se realiza tanto en valor absoluto como
+en relación con la referencia E0 de cada modelo.
+
+La calibración se evalúa sin utilizar E1--E9 para modificar las distribuciones
+predictivas. Si se aplica una transformación de recalibración, sus parámetros
+se estiman únicamente con la partición de validación descrita en la
+Sección~\ref{sec:entorno_comun_modelos}, después de fijar la configuración del
+predictor, y permanecen congelados durante la prueba ID y la campaña de
+cambios. La cobertura y la NLL se calculan por salida y por escenario de
+acuerdo con las ecuaciones~\eqref{eq:empirical_predictive_coverage} y
+\eqref{eq:gaussian_predictive_nll}. Esta separación permite comprobar si una
+calibración obtenida en condiciones nominales se conserva, se vuelve
+conservadora o produce sobreconfianza bajo cada familia de cambio.
+
+Como información complementaria se utiliza una puntuación OOD calculada en el
+espacio de entradas estandarizadas. La opción de referencia es una distancia
+de Mahalanobis regularizada respecto de los datos de entrenamiento:
+\begin{equation}
+    S_{\mathrm{OOD},k}
+    =
+    \sqrt{
+        \left(\widetilde{\mathbf z}_k-
+              \boldsymbol{\mu}_{\widetilde z,\mathrm{tr}}\right)^{\mathsf T}
+        \left(\boldsymbol{\Sigma}_{\widetilde z,\mathrm{tr}}
+              +\lambda\mathbf I\right)^{-1}
+        \left(\widetilde{\mathbf z}_k-
+              \boldsymbol{\mu}_{\widetilde z,\mathrm{tr}}\right)
+    },
+    \qquad \lambda>0.
+    \label{eq:mahalanobis_ood_score}
+\end{equation}
+La media, la covarianza, la regularización y cualquier umbral se determinan
+sin emplear los escenarios de prueba y después se mantienen fijos. La matriz
+inversa puede calcularse antes de la operación, por lo que la evaluación en
+línea requiere únicamente operaciones sobre cuatro entradas. Esta puntuación
+detecta alejamiento en $\mathbf z_k$, pero no se supone capaz de revelar por
+sí sola cambios dinámicos latentes, como una variación de adherencia que no
+desplace las covariables observadas.
+
+En E0--E8, el análisis se realiza por corrida y posteriormente se agrega por
+escenario, evitando tratar transiciones correlacionadas como repeticiones
+independientes. En E9 se conservan además las series temporales sincronizadas
+con el instante de cambio. Cualquier suavizado utilizado por el supervisor
+debe ser causal, depender solo de la muestra actual y de las anteriores, y
+mantener los mismos parámetros en todos los escenarios. El error posterior al
+cambio se reserva como etiqueta de evaluación y nunca se utiliza para
+anticipar la señal de incertidumbre u OOD.
+
+Finalmente, se registra el costo computacional de cada bloque mediante la
+distribución de $t^{(b)}_{\mathrm{inf},k}$ y se contrasta con el período de
+muestreo $T_s$. Esta comprobación se realiza con los modelos ya cargados y
+separa, cuando resulte necesario, el tiempo de la media, la incertidumbre y la
+puntuación OOD. Solo las señales calculables antes de aplicar
+$\mathbf u_k$, calibradas sin información de los escenarios de prueba y
+compatibles con el plazo de ejecución pasan a la etapa de construcción de
+$C_k$.
 
 \section{Construcción y evaluación de la señal de validez}
 
