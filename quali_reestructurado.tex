@@ -1620,6 +1620,94 @@ formal de estabilidad, factibilidad recursiva o seguridad.
 % -> vehicle
 % -> closed-loop metrics.
 
+La arquitectura propuesta se organiza alrededor de una cadena causal que
+conecta los cambios de operación con sus posibles consecuencias para el
+controlador. El punto de partida es una modificación del régimen físico, del
+rango de operación o de la excitación respecto de las condiciones utilizadas
+para entrenar el residual. El cambio puede ocurrir entre recorridos, como una
+carga diferente, o durante una ejecución, como una reducción de adherencia.
+Sus valores reales se utilizan para definir la planta y los escenarios de
+evaluación, pero no se entregan al supervisor cuando el protocolo los declara
+desconocidos.
+
+La secuencia conceptual puede resumirse como
+\begin{equation}
+    \begin{aligned}
+        \text{cambio físico u operativo}
+        &\longrightarrow
+        \text{posible cambio del residual} \\
+        &\longrightarrow
+        \{\hat{\mathbf d}_k,U_{\mathrm{epi},k},
+          U_{\mathrm{ale},k},S_{\mathrm{OOD},k}\} \\
+        &\longrightarrow C_k
+        \longrightarrow \text{adaptación del MPC/NMPC} \\
+        &\longrightarrow \mathbf u_k
+        \longrightarrow \text{vehículo}
+        \longrightarrow \text{desempeño en lazo cerrado}.
+    \end{aligned}
+    \label{eq:shift_validity_control_chain}
+\end{equation}
+La primera flecha no implica que cualquier cambio invalide la corrección
+aprendida. Indica que el cambio puede modificar la discrepancia entre B0 y la
+planta. Del mismo modo, las señales de incertidumbre y OOD no constituyen la
+validez: son observaciones candidatas para construir la confianza
+$C_k$ definida en la ecuación~\eqref{eq:runtime_confidence_signal}. Cada enlace
+de la cadena debe comprobarse de manera independiente.
+
+En el instante $k$, el controlador dispone de las señales medidas o estimadas
+que forman $\mathbf z_k$. El bloque aprendido calcula la corrección
+$\hat{\mathbf d}_k$ y las componentes de incertidumbre disponibles, mientras
+que el monitor OOD caracteriza el alejamiento respecto del dominio de
+entrenamiento. El estimador de validez transforma estas señales en $C_k$ sin
+recibir necesariamente la adherencia, la masa, las inercias o los parámetros
+de los neumáticos. Así, el supervisor intenta responder si la corrección
+conserva respaldo suficiente, no cuál parámetro físico produjo el cambio.
+
+La señal $C_k$ modifica una configuración del controlador que se representa
+por $\boldsymbol{\eta}_k$:
+\begin{equation}
+    \boldsymbol{\eta}_k=h(C_k),
+    \qquad
+    \mathbf u_k
+    =
+    \kappa_{\mathrm{MPC}}
+    \!\left(
+        \hat{\mathbf x}_k,
+        \mathbf r_k,
+        f_{\mathrm{hyb}},
+        \boldsymbol{\eta}_k
+    \right),
+    \label{eq:validity_aware_control_law}
+\end{equation}
+donde $\mathbf r_k$ representa la referencia y $f_{\mathrm{hyb}}$ el modelo
+híbrido de predicción. El mecanismo principal que se investigará es la
+adaptación del horizonte, de modo que $\boldsymbol{\eta}_k=N_k$ en la
+formulación inicial. La función $h$, sus límites y la dirección conveniente de
+la adaptación no se presuponen: deben determinarse mediante la relación entre
+horizonte, acumulación del error, costo computacional y desempeño en lazo
+cerrado.
+
+Después de aplicar $\mathbf u_k$, la planta evoluciona y genera las señales
+utilizadas en el siguiente ciclo. Estas observaciones permiten evaluar a
+posteriori el error del residual y el efecto de la decisión, pero la acción del
+instante $k$ debe seleccionarse antes de conocerlos. Esta separación temporal
+es la razón por la que $C_k$ se formula como una estimación de confianza y no
+como una medida directa del error futuro. En el núcleo de la tesis, los
+parámetros del modelo aprendido permanecen congelados durante la campaña; la
+actualización o el reentrenamiento constituyen extensiones opcionales.
+
+La validación recorre la cadena en ambos sentidos. Primero se comprueba si los
+cambios seleccionados alteran el error y si las señales disponibles reflejan
+esa alteración. Después se examina si $C_k$ se relaciona con el error relevante
+para el control y si la modificación del MPC/NMPC reduce la degradación frente
+a arquitecturas que no supervisan la validez. Un resultado favorable en una
+etapa no garantiza el siguiente: detectar un cambio no asegura que sea
+perjudicial, estimar una degradación no asegura que adaptar el horizonte sea la
+respuesta adecuada y mejorar una métrica predictiva no demuestra por sí solo
+una mejora en lazo cerrado. Esta estructura convierte cada enlace en una
+hipótesis experimental verificable y delimita el alcance empírico de las
+conclusiones.
+
 \section{Modelo híbrido de predicción}
 
 % Presentar formalmente la combinación physics + learned residual.
