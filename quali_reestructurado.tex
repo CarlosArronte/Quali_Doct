@@ -2906,34 +2906,258 @@ $C_k$.
 % no introducir verdad de referencia en baselines no definidos como oracle.
 
 \section{Métricas de evaluación}
+\label{sec:metricas_evaluacion}
+
+Las métricas se calculan primero para cada corrida completa y después se
+agregan por escenario. No se consideran las transiciones consecutivas como
+repeticiones independientes, porque comparten trayectoria, estado inicial y
+evolución temporal. Cuando dos arquitecturas se evalúan sobre la misma
+corrida de CarSim, la comparación es pareada. Los resultados se presentan por
+componente y por familia de cambio; un único promedio sobre E0--E9 se utiliza
+solo como resumen secundario, ya que podría ocultar fallos concentrados en un
+régimen particular.
 
 \subsection{Métricas del modelo}
+\label{sec:metricas_modelo}
 
-% - RMSE / MAE;
-% - NLL;
-% - multi-step prediction error;
-% - residual error.
+La evaluación a un paso utiliza el error residual de la
+ecuación~\eqref{eq:physics_hybrid_residual_errors}. Para la componente
+$j\in\{v_y,r\}$, el modelo $b$ y una corrida $q$ con $n_q$ transiciones, se
+calculan
+\begin{align}
+    \operatorname{RMSE}^{(b,q)}_j
+    &=
+    \sqrt{
+        \frac{1}{n_q}
+        \sum_{k=1}^{n_q}
+        \left(e^{(b)}_{d,j,k}\right)^2
+    },
+    \label{eq:evaluation_rmse}\\
+    \operatorname{MAE}^{(b,q)}_j
+    &=
+    \frac{1}{n_q}
+    \sum_{k=1}^{n_q}
+    \left|e^{(b)}_{d,j,k}\right|.
+    \label{eq:evaluation_mae}
+\end{align}
+El RMSE penaliza con mayor intensidad los errores grandes, mientras que el
+MAE permite comprobar que la comparación no depende de unas pocas muestras
+extremas. Ambos se mantienen en unidades físicas. Para cuantificar la
+aportación del residual respecto de B0 se informa además la reducción relativa
+del RMSE,
+\begin{equation}
+    I^{(b,q)}_{\mathrm{RMSE},j}
+    =
+    100\left(
+        1-
+        \frac{\operatorname{RMSE}^{(b,q)}_j}
+             {\operatorname{RMSE}^{(\mathrm{B0},q)}_j}
+    \right),
+    \label{eq:relative_rmse_improvement}
+\end{equation}
+expresada en porcentaje. Un valor positivo representa mejora y uno negativo indica que la
+corrección aprendida perjudica la predicción. Esta medida complementa la
+ganancia instantánea definida en la ecuación~\eqref{eq:one_step_residual_gain}
+y permite comparar la utilidad media del residual entre escenarios.
+
+El comportamiento multietapa se evalúa a partir del error de estado de la
+ecuación~\eqref{eq:multistep_state_prediction_error}. Para un horizonte $H$ se
+emplea
+\begin{equation}
+    E^{(b,q)}_{H}
+    =
+    \sqrt{
+        \frac{1}{H}
+        \sum_{i=1}^{H}
+        \left\|
+            \mathbf e^{(b,q)}_{x,i\mid k}
+        \right\|_{\mathbf W_x}^{2}
+    },
+    \label{eq:weighted_multistep_error}
+\end{equation}
+donde $\mathbf W_x$ contiene escalas fijas para evitar que estados con unidades
+o amplitudes distintas dominen el resultado. Se reportan también los errores
+por estado y por paso $i$, porque el valor agregado no muestra si la
+degradación aparece al inicio o al final del horizonte. Para aislar la calidad
+del modelo, B0--B4 reciben en esta prueba la misma secuencia de entradas; las
+diferencias producidas por las acciones que selecciona cada controlador se
+evalúan posteriormente en lazo cerrado.
 
 \subsection{Métricas de incertidumbre, calibración y detección fuera de distribución}
+\label{sec:metricas_incertidumbre_ood}
 
-% - calibration error / coverage según representación elegida;
-% - NLL u otras proper scoring rules;
-% - AUROC / AUPR / FPR@TPR para OOD cuando corresponda;
-% - correlación con error;
-% - detection delay para shifts temporales;
-% - costo computacional.
+La calidad probabilística de B2--B4 se caracteriza mediante la cobertura y la
+NLL definidas en las ecuaciones~\eqref{eq:empirical_predictive_coverage} y
+\eqref{eq:gaussian_predictive_nll}. La convención de ajuste de momentos de B3
+se mantiene en todos los escenarios para que sus valores sean comparables con
+los de B2 y B4. Como la cobertura en un único nivel puede favorecer intervalos
+innecesariamente amplios, se evalúan varios niveles nominales
+$\mathcal{P}=\{p_1,\ldots,p_L\}$ y se calcula el error medio de calibración
+\begin{equation}
+    \operatorname{CE}^{(b,s)}_j
+    =
+    \frac{1}{L}
+    \sum_{\ell=1}^{L}
+    \left|
+        \widehat{\operatorname{Cov}}^{(b,s)}_j(p_\ell)-p_\ell
+    \right|.
+    \label{eq:mean_calibration_error}
+\end{equation}
+Este resultado se acompaña de la anchura media de los intervalos. Así se
+distingue una distribución bien calibrada y concentrada de otra que obtiene
+cobertura mediante una dispersión excesiva.
+
+La utilidad de las incertidumbres como indicadores del error se evalúa por
+separado para $U_{\mathrm{epi}}$, $U_{\mathrm{ale}}$ y $U_{\mathrm{tot}}$. Se
+informa la correlación de Spearman con $|e_{d,j,k}|$, tanto por salida como para
+las magnitudes adimensionales de la
+ecuación~\eqref{eq:dimensionless_uncertainty_aggregation}. La correlación se
+complementa con la tasa de fallo confiado
+\begin{equation}
+    \operatorname{FCR}^{(b,s)}_j
+    =
+    \frac{
+        \sum_k
+        \mathbb I\!\left\{
+            |e^{(b)}_{d,j,k}|>\tau_{e,j},\;
+            U^{(b)}_{\mathrm{tot},j,k}\leq\tau_{U,j}
+        \right\}
+    }{
+        \sum_k
+        \mathbb I\!\left\{
+            |e^{(b)}_{d,j,k}|>\tau_{e,j}
+        \right\}
+    },
+    \label{eq:confident_failure_rate}
+\end{equation}
+que representa la fracción de errores altos acompañados por una incertidumbre
+no elevada. Los umbrales $\tau_{e,j}$ y $\tau_{U,j}$ se fijan mediante
+cuantiles de la partición nominal de validación y no se reajustan para cada
+escenario. Si no ocurre ningún error por encima de $\tau_{e,j}$, la tasa se
+declara no definida en lugar de asignarle un cero.
+
+La puntuación de la ecuación~\eqref{eq:mahalanobis_ood_score} se evalúa con E0
+como referencia negativa y cada escenario de cambio como conjunto positivo.
+Se reportan AUROC, AUPR y la tasa de falsos positivos al nivel de sensibilidad
+seleccionado. Estas métricas se desglosan por escenario: combinarlos en una
+única clase OOD ocultaría la diferencia entre cambios observables de
+covariables y cambios latentes de la dinámica. En estos últimos, un AUROC bajo
+no contradice necesariamente el funcionamiento de la puntuación de entrada;
+evidencia que el cambio no es identificable mediante $\mathbf z_k$ y debe
+considerarse al valorar la complementariedad con las incertidumbres.
+
+Para E9 se añade una evaluación temporal. Dado un indicador causal $a_k$, un
+umbral $\gamma_a$ y una persistencia mínima de $L_a$ muestras, el retraso de
+detección es
+\begin{equation}
+    T^{(a)}_{\mathrm{det}}
+    =
+    T_s\left(
+        \min\left\{
+            k\geq k_{\mathrm{shift}}:
+            a_{k:k+L_a-1}>\gamma_a
+        \right\}
+        -k_{\mathrm{shift}}
+    \right).
+    \label{eq:shift_detection_delay}
+\end{equation}
+El umbral y la persistencia se fijan antes de evaluar E9. Junto con el retraso
+se informa la tasa de falsas alarmas en el segmento anterior al cambio y la
+proporción de corridas en las que no se produce detección. De este modo, una
+respuesta rápida no se premia si se obtiene a costa de alarmas frecuentes.
+
+El costo de ejecución de la supervisión se resume mediante la mediana, el
+percentil 95 y el máximo de los tiempos registrados en la
+ecuación~\eqref{eq:common_uncertainty_record}. Además, se calcula la tasa de
+incumplimiento del plazo
+\begin{equation}
+    R_{\mathrm{miss}}
+    =
+    \frac{1}{N}
+    \sum_{k=1}^{N}
+    \mathbb I\!\left\{t_{\mathrm{total},k}>T_s\right\},
+    \label{eq:deadline_miss_rate}
+\end{equation}
+donde $t_{\mathrm{total},k}$ incluye predicción, incertidumbre, OOD y
+construcción de la señal de validez. El tiempo se mide después de la carga de
+los modelos, sin mezclar inicialización con inferencia periódica.
 
 \subsection{Métricas de desempeño en lazo cerrado}
+\label{sec:metricas_lazo_cerrado}
 
-% Estas son las métricas principales de la tesis:
-% - tracking error;
-% - errores de estados dinámicos relevantes;
-% - constraint violations;
-% - control effort;
-% - feasibility;
-% - recovery after shift;
-% - indicadores de estabilidad/robustez cuando sea válido;
-% - computation time / sampling deadline.
+Las métricas en lazo cerrado constituyen el criterio principal para determinar
+si la estimación de validez aporta utilidad al controlador. Para cada corrida
+se calculan el RMSE y el máximo absoluto de $e_y$ y $e_\psi$. El primero mide
+el comportamiento sostenido y el segundo conserva los errores transitorios
+que podrían desaparecer en el promedio. Los estados dinámicos $v_y$ y $r$ se
+resumen mediante RMS y máximos absolutos para comprobar que una mejora de
+seguimiento no se obtiene a costa de respuestas laterales excesivas.
+
+El desempeño conjunto se expresa además mediante un costo realizado que usa
+las mismas ponderaciones que el problema predictivo de la
+ecuación~\eqref{eq:mpc_cost}:
+\begin{equation}
+    J^{(q)}_{\mathrm{cl}}
+    =
+    \frac{1}{n_q}
+    \sum_{k=0}^{n_q-1}
+    \left(
+        \left\|\mathbf x_k-\mathbf x^{\mathrm{ref}}_k\right\|_{\mathbf Q}^{2}
+        +
+        \left\|\mathbf u_k\right\|_{\mathbf R}^{2}
+    \right).
+    \label{eq:realized_closed_loop_cost}
+\end{equation}
+Este costo facilita una comparación escalar, pero no sustituye el reporte de
+sus componentes. El esfuerzo de dirección se caracteriza mediante el RMS y el
+máximo de $\delta_k$, y su variación mediante
+\begin{equation}
+    \operatorname{TV}^{(q)}_{\delta}
+    =
+    \sum_{k=1}^{n_q-1}
+    |\delta_k-\delta_{k-1}|.
+    \label{eq:steering_total_variation}
+\end{equation}
+Esta última métrica permite detectar oscilaciones o actividad de control que
+un costo promedio podría disimular.
+
+Las restricciones se analizan sin reducirlas a una variable binaria. Para
+cada restricción escalar escrita como $g_c(\mathbf x_k,\mathbf u_k)\leq0$ se
+registran la fracción de muestras violadas, la magnitud máxima y la violación
+acumulada
+\begin{equation}
+    V^{(q)}_c
+    =
+    \sum_{k=0}^{n_q-1}
+    \max\!\left\{0,g_c(\mathbf x_k,\mathbf u_k)\right\}T_s.
+    \label{eq:accumulated_constraint_violation}
+\end{equation}
+También se informa la proporción de corridas que presentan al menos una
+violación. Esta última evita que muchas ejecuciones correctas oculten un fallo
+grave en una condición específica.
+
+La factibilidad computacional se evalúa mediante la tasa de problemas de
+optimización resueltos, el número de activaciones de una acción de respaldo,
+el tiempo de solución mediano, su percentil 95 y su máximo, y la tasa de ciclos
+que exceden $T_s$. Estos indicadores se presentan junto con el horizonte
+$N_k$, de modo que cualquier mejora de seguimiento pueda relacionarse con el
+costo de la adaptación del MPC/NMPC.
+
+En E9 se mide también la recuperación posterior al cambio. El tiempo de
+recuperación es el intervalo desde $k_{\mathrm{shift}}$ hasta que el error de
+seguimiento vuelve a permanecer durante $L_{\mathrm{rec}}$ muestras dentro de
+una banda fijada a partir de E0. Si la corrida termina antes de satisfacer el
+criterio, se registra como no recuperada; no se sustituye por la duración
+máxima observada. Se informan asimismo el máximo error posterior al cambio y
+el costo acumulado durante la recuperación.
+
+Como resultados principales se consideran el RMSE y el máximo de $e_y$, las
+violaciones de restricciones, la factibilidad del optimizador y el
+cumplimiento del plazo de muestreo. El error de orientación, los estados
+dinámicos, el esfuerzo de control, la variación de dirección y el tiempo de
+recuperación actúan como resultados complementarios. Esta jerarquía se fija
+antes de la comparación final para evitar seleccionar a posteriori únicamente
+las métricas favorables a una arquitectura.
 
 \section{Criterio de robustez empírica}
 
