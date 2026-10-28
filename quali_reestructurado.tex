@@ -282,7 +282,7 @@ Dentro del dominio representado por los datos de entrenamiento, los modelos resi
 
 El problema central surge porque el MPC puede continuar utilizando información aprendida aun cuando su validez predictiva haya disminuido. B1 ilustra el caso elemental: una corrección residual, por sí sola, no informa si sigue siendo confiable para las decisiones de control. El mismo problema debe examinarse en las demás configuraciones B2--B4. Una predicción degradada puede alterar la secuencia de acciones optimizada y deteriorar el desempeño en lazo cerrado. La investigación aborda, en consecuencia, cómo caracterizar durante la operación la validez de los modelos aprendidos, cómo relacionarla con el error relevante para el control y cómo hacer que el MPC reaccione cuando esa validez disminuye.
 
-\section{Alcance del problema (prioridad 1)}
+\section{Alcance del problema}
 
 % PASO 10. Di aquí qué parte concreta del problema aborda la tesis:
 % dinámica vehicular, modelo físico con residual aprendido y uso de la
@@ -317,6 +317,38 @@ El problema central surge porque el MPC puede continuar utilizando información 
 % DAgger/reentrenamiento online: extensión opcional si el calendario
 % permite estudiarlo y si la degradación observada se asocia
 % principalmente a incertidumbre epistémica.
+
+Esta tesis se concentra en la dinámica lateral del vehículo y en el
+seguimiento de trayectoria mediante un controlador MPC/NMPC. El modelo de
+predicción combina un modelo físico orientado al control con un residual
+aprendido a partir de datos. Sobre esta arquitectura se estudiará la
+estimación, durante la operación, de la validez de la corrección aprendida y
+su utilización para adaptar el controlador cuando las condiciones difieran de
+las representadas durante el entrenamiento. Las familias de cambio
+consideradas comprenden variaciones de adherencia, masa o carga y rigidez
+lateral de los neumáticos, así como la operación fuera del rango de estados,
+velocidades o entradas utilizado para entrenar el residual. La metodología
+seleccionará escenarios representativos de estas familias, sin pretender
+cubrir todas sus combinaciones ni identificar necesariamente el parámetro
+físico que origine la degradación.
+
+El protocolo experimental distinguirá entre las variables medidas, los
+estados o parámetros estimados y las magnitudes que no estén disponibles para
+el controlador. Las señales cinemáticas y la entrada de dirección requeridas
+por el modelo se considerarán disponibles mediante medición o estimación,
+según corresponda. En cambio, los valores reales de parámetros como la
+adherencia, la masa, las inercias o la rigidez lateral podrán utilizarse para
+configurar y analizar los escenarios sin proporcionarlos al estimador de
+validez ni al controlador cuando el experimento los defina como desconocidos.
+El alcance no comprende la percepción, la detección de objetos, la
+planificación global, la predicción de otros agentes ni las garantías del
+sistema autónomo completo; en particular, la pérdida de visibilidad del
+ejemplo inicial no constituye un problema de percepción abordado por la
+tesis. La contribución principal se evaluará mediante el desempeño predictivo
+y en lazo cerrado y mediante criterios de robustez empírica, sin prometer
+garantías formales de seguridad o estabilidad. El uso de funciones de barrera
+de control y las estrategias de adquisición de datos o reentrenamiento se
+mantienen como extensiones opcionales.
 
 \section{Brecha de investigación}
 
