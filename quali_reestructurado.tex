@@ -1638,23 +1638,14 @@ Sus valores reales se utilizan para definir la planta y los escenarios de
 evaluación, pero no se entregan al supervisor cuando el protocolo los declara
 desconocidos.
 
-La secuencia conceptual puede resumirse como
-\begin{equation}
-    \begin{aligned}
-        \text{cambio físico u operativo}
-        &\longrightarrow
-        \text{posible cambio del residual} \\
-        &\longrightarrow
-        \{\hat{\mathbf d}_k,U_{\mathrm{epi},k},
-          U_{\mathrm{ale},k},S_{\mathrm{OOD},k}\} \\
-        &\longrightarrow C_k
-        \longrightarrow \text{adaptación del MPC/NMPC} \\
-        &\longrightarrow \mathbf u_k
-        \longrightarrow \text{vehículo}
-        \longrightarrow \text{desempeño en lazo cerrado}.
-    \end{aligned}
-    \label{eq:shift_validity_control_chain}
-\end{equation}
+La Figura~\ref{fig:shift_validity_control_chain} resume esta secuencia y la
+realimentación utilizada durante la operación.
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=\linewidth]{imgs/residual_adaptation_block_diagram.png}
+    \caption{Cadena cambio--validez--control y realimentación del residual en la arquitectura propuesta.}
+    \label{fig:shift_validity_control_chain}
+\end{figure}
 La primera flecha no implica que cualquier cambio invalide la corrección
 aprendida. Indica que el cambio puede modificar la discrepancia entre B0 y la
 planta. Del mismo modo, las señales de incertidumbre y OOD no constituyen la
