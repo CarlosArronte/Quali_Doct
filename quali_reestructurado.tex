@@ -652,6 +652,7 @@ saturación explícita por adherencia.
 La masa, el momento de inercia de guiñada, la posición del centro de gravedad y las rigideces laterales determinan la respuesta lateral y de guiñada. En particular, las rigideces $C_f$ y $C_r$ describen la pendiente local de la relación fuerza--ángulo de deriva y no deben confundirse con el límite de fuerza impuesto por la adherencia neumático--carretera. Cuando el vehículo opera cerca de saturación, cambia su carga o se aleja del punto de velocidad nominal, las hipótesis lineales pueden dejar de representar adecuadamente la respuesta de la planta.
 
 \section{Modelos orientados al control y discrepancias del modelo}
+\label{sec:modelos_orientados_control}
 
 Para su uso en control, las ecuaciones anteriores se organizan como un modelo en espacio de estados. Esta formulación conserva las relaciones dominantes entre dirección, movimiento lateral y guiñada, y permite obtener un modelo discreto compatible con la frecuencia de actualización del controlador.
 
@@ -740,6 +741,7 @@ Las matrices se calculan a la velocidad nominal $V_{x,0}$ y se mantienen constan
 La simplificación que hace computacionalmente útil a B0 también origina discrepancias respecto de CarSim. Entre sus fuentes se encuentran la linealización de los neumáticos, la omisión de saturaciones y acoplamientos, los errores en los parámetros nominales y los cambios de régimen de operación. Un parámetro real desconocido pero constante puede producir error de modelo sin constituir un cambio de distribución; el cambio de distribución aparece cuando la operación se aparta de las condiciones representadas por los datos o por las hipótesis empleadas para construir el modelo.
 
 \section{Modelos híbridos: física y residuales aprendidos}
+\label{sec:modelos_hibridos_residuales}
 
 Un modelo híbrido conserva la predicción física como estructura base y añade una función aprendida para aproximar la discrepancia que esa estructura no explica. En forma general,
 \begin{equation}
@@ -908,6 +910,7 @@ En esta tesis, el horizonte $N$ es la principal variable candidata para adaptar 
 \chapter{Información aprendida y validez durante la operación}
 
 \section{Información aprendida relevante para el controlador}
+\label{sec:informacion_aprendida_control}
 
 % La información aprendida principal de la tesis NO es una taxonomía
 % genérica de salidas de IA. Es el residual/model mismatch incorporado
@@ -966,6 +969,7 @@ Las secciones siguientes precisan la interpretación de la incertidumbre, los
 cambios de distribución y la validez durante la operación.
 
 \section{Incertidumbre predictiva}
+\label{sec:incertidumbre_predictiva}
 
 Una predicción puntual del residual indica la corrección que el modelo
 considera más probable, pero no expresa cuánta dispersión atribuye a esa
@@ -1199,6 +1203,7 @@ afectar la generalización sin determinar por sí solos la consecuencia en lazo
 cerrado \cite{Brunke2022Safe}.
 
 \subsection{Régimen físico no representado}
+\label{sec:regimen_fisico_no_representado}
 
 % Caso principal: cambios de parámetros/condiciones físicas no presentes
 % durante entrenamiento: variaciones de fricción, masa/carga o rigidez
@@ -1326,6 +1331,7 @@ relacionadas, pero diferentes.
 % No mezclar automáticamente sensor fault con dynamics OOD.
 
 \section{Validez y confianza durante la operación}
+\label{sec:validez_confianza_operacion}
 
 % Sección central del marco conceptual.
 %
@@ -1417,6 +1423,7 @@ separación, el índice podría describir los escenarios empleados para ajustarl
 sin estimar de forma fiable la validez durante una operación nueva.
 
 \section{Validez relevante para el control}
+\label{sec:validez_relevante_control}
 
 % Diferenciar:
 % - error estadístico del predictor;
@@ -1608,6 +1615,7 @@ formal de estabilidad, factibilidad recursiva o seguridad.
 \chapter{Marco conceptual y arquitectura propuesta}
 
 \section{La cadena cambio--validez--control}
+\label{sec:cadena_cambio_validez_control}
 
 % Figura conceptual recomendada:
 %
@@ -1709,13 +1717,109 @@ hipótesis experimental verificable y delimita el alcance empírico de las
 conclusiones.
 
 \section{Modelo híbrido de predicción}
+\label{sec:arquitectura_modelo_hibrido}
 
-% Presentar formalmente la combinación physics + learned residual.
-% La implementación concreta se detallará después, pero aquí debe quedar
-% claro qué información consume el MPC/NMPC.
-% Representar parámetros físicos reales y nominales/estimados por separado.
-% No suministrar a la arquitectura valores de masa, rigidez o fricción
-% que el protocolo declara desconocidos; reservarlos para evaluación/oracle.
+La derivación del modelo físico B0 y de su discretización se presenta en la
+Sección~\ref{sec:modelos_orientados_control}; la definición del objetivo
+residual, de sus variables de entrada y de la predicción B1 se encuentra en la
+Sección~\ref{sec:modelos_hibridos_residuales}. Sobre esa base, esta sección no
+reformula los modelos individuales, sino que establece la interfaz mediante la
+cual cualquiera de las configuraciones B1--B4 se incorpora al predictor del
+MPC/NMPC.
+
+Sea $f_{\mathrm{B0}}$ la transición nominal del estado completo
+$\mathbf{x}=[e_y,e_\psi,v_y,r]^{\mathsf T}$ y sea
+$\bar{\mathbf d}^{(b)}(\mathbf z)$ la corrección media proporcionada por la
+configuración $b$. Como el residual actúa únicamente sobre $v_y$ y $r$, su
+inserción en el estado completo se expresa mediante
+\begin{equation}
+    \mathbf{J}_d
+    =
+    \begin{bmatrix}
+        0 & 0 \\
+        0 & 0 \\
+        1 & 0 \\
+        0 & 1
+    \end{bmatrix},
+    \qquad
+    f_{\mathrm{hyb}}^{(b)}
+    (\mathbf{x},\delta,\kappa_{\mathrm{ref}},\mathbf z)
+    =
+    f_{\mathrm{B0}}
+    (\mathbf{x},\delta,\kappa_{\mathrm{ref}})
+    +
+    \mathbf{J}_d\bar{\mathbf d}^{(b)}(\mathbf z).
+    \label{eq:full_state_hybrid_transition}
+\end{equation}
+Esta escritura conserva en B0 la evolución de los errores de seguimiento y
+añade la corrección aprendida solo a las dos variables para las que fue
+entrenada. Además, permite representar la referencia puramente física dentro
+de la misma interfaz mediante
+$\bar{\mathbf d}^{(0)}(\mathbf z)=\mathbf 0$; para $b\in\{1,2,3,4\}$, la
+corrección corresponde a la predicción puntual o a la media de la distribución
+residual del modelo considerado.
+
+En cada etapa $i$ del horizonte, las entradas del bloque aprendido se forman
+con las variables previstas que estarán disponibles para el modelo:
+\begin{equation}
+    \mathbf z_{i\mid k}
+    =
+    \begin{bmatrix}
+        V_{x,i\mid k} &
+        \hat v_{y,i\mid k} &
+        \hat r_{i\mid k} &
+        \delta_{i\mid k}
+    \end{bmatrix}^{\mathsf T},
+    \qquad i=0,\ldots,N_k-1.
+    \label{eq:hybrid_rollout_features}
+\end{equation}
+Aquí, $V_{x,i\mid k}$ denota el valor disponible para la predicción, ya sea
+mediante una referencia conocida o mediante la convención de mantener la
+medición actual durante el horizonte. La elección concreta debe fijarse en el
+protocolo de control y mantenerse idéntica al comparar B0--B4. A partir del
+estado inicial estimado, el despliegue recursivo queda definido por
+\begin{equation}
+    \hat{\mathbf x}_{0\mid k}=\hat{\mathbf x}_k,
+    \qquad
+    \hat{\mathbf x}_{i+1\mid k}
+    =
+    f_{\mathrm{hyb}}^{(b)}
+    \!\left(
+        \hat{\mathbf x}_{i\mid k},
+        \delta_{i\mid k},
+        \kappa_{\mathrm{ref},i\mid k},
+        \mathbf z_{i\mid k}
+    \right).
+    \label{eq:hybrid_multistep_rollout}
+\end{equation}
+Por tanto, aunque el residual se entrena a un paso, el controlador lo evalúa
+recursivamente en los puntos generados por su propia trayectoria prevista. La
+distinción entre el error a un paso, su acumulación multietapa y su efecto
+sobre la decisión se desarrolla en la
+Sección~\ref{sec:validez_relevante_control}.
+
+La salida aprendida se divide funcionalmente en dos rutas. La media residual
+$\bar{\mathbf d}^{(b)}$ modifica la transición de la
+ecuación~\eqref{eq:full_state_hybrid_transition}; las magnitudes de
+incertidumbre disponibles no se suman al estado ni sustituyen a la corrección.
+Se envían, junto con el indicador OOD y la información de calibración, al
+estimador de validez. La interpretación de estas magnitudes se establece en
+las Secciones~\ref{sec:incertidumbre_predictiva} y
+\ref{sec:validez_confianza_operacion}, mientras que su posición dentro de la
+arquitectura completa se muestra en la
+Sección~\ref{sec:cadena_cambio_validez_control}. De este modo, el MPC recibe
+una dinámica corregida para optimizar y, por una ruta separada, una señal que
+puede modificar su configuración sin confundir incertidumbre con dinámica.
+
+La frontera entre información disponible y parámetros físicos ocultos es la
+establecida en la Sección~\ref{sec:regimen_fisico_no_representado}. Aplicada a
+la ecuación~\eqref{eq:full_state_hybrid_transition}, implica que
+$f_{\mathrm{B0}}$ utiliza los parámetros nominales y que el bloque aprendido
+consume únicamente $\mathbf z_{i\mid k}$. Los valores reales de la planta se
+reservan para construir los escenarios y evaluar los resultados; no forman
+parte de la interfaz del predictor. Así, la comparación mide la aportación de
+la corrección aprendida sin proporcionar al controlador información
+privilegiada sobre el cambio físico.
 
 \section{Estimador de validez}
 
