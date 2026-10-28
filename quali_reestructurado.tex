@@ -917,6 +917,54 @@ En esta tesis, el horizonte $N$ es la principal variable candidata para adaptar 
 % bibliográfico: full learned dynamics, learned tire/force models,
 % estimadores de parámetros, etc.
 
+La información producida por un modelo aprendido resulta relevante para el
+control cuando interviene en la representación de la dinámica, en la
+estimación del estado o en alguna decisión del controlador. El aprendizaje
+puede utilizarse, por ejemplo, para representar fuerzas o componentes de la
+dinámica, estimar estados o parámetros y corregir las predicciones de un
+modelo nominal. Estas funciones no son equivalentes: un modelo de fuerzas
+aprendido introduce una descripción específica de un subsistema, un
+estimador proporciona una magnitud física o un estado y un modelo residual
+aproxima directamente la discrepancia de predicción sin separar sus causas
+\cite{Zhou2025Hybrid,Bertipaglia2024An,Kabzan2019LearningBased}.
+
+En esta tesis, la información aprendida principal es el residual discreto
+definido en la ecuación~\eqref{eq:b1_residual_target}. A partir de las
+variables disponibles en $\mathbf{z}_k$, el modelo aprendido estima la
+corrección $\hat{\mathbf{d}}_k$ de la velocidad lateral y de la velocidad
+angular de guiñada. Esta corrección se incorpora a la transición utilizada
+por el MPC/NMPC, según la ecuación~\eqref{eq:b1_hybrid_prediction}. Por tanto,
+el residual no constituye una acción de control ni una estimación directa de
+la adherencia, la masa o la rigidez lateral de los neumáticos: representa el
+efecto conjunto que las simplificaciones estructurales, los errores
+paramétricos y otras discrepancias producen sobre la predicción a un paso.
+Esta formulación permite aprender el error del modelo sin identificar por
+separado cada causa física, como ocurre en otros enfoques de aprendizaje
+residual para control predictivo \cite{Kabzan2019LearningBased,Chen2026Hybrid}.
+
+La arquitectura distingue así tres niveles de información. Los parámetros
+reales pertenecen a la planta y pueden cambiar entre escenarios; los
+parámetros nominales determinan el modelo físico B0; y las señales medidas o
+estimadas forman las entradas disponibles para calcular la predicción. En el
+protocolo propuesto, $V_x$, $v_y$, $r$ y $\delta$ están disponibles para el
+modelo residual, mientras que la adherencia y los parámetros que caracterizan
+la masa, las inercias o los neumáticos no se suministran como entradas cuando
+el experimento los define como desconocidos. En consecuencia, un cambio
+físico latente puede modificar la discrepancia modelo--planta aun cuando las
+variables observadas permanezcan dentro de rangos conocidos.
+
+La relevancia del residual no se determina únicamente por su error
+instantáneo. Al formar parte del modelo de transición, sus correcciones pueden
+propagarse a lo largo del horizonte de predicción y modificar la secuencia de
+entradas seleccionada por el controlador. En las configuraciones
+probabilísticas, la predicción residual se acompaña además de una
+caracterización de su dispersión o de la incertidumbre del modelo. Estas
+señales adicionales no sustituyen al residual ni constituyen por sí solas una
+medida de validez; su función es aportar evidencia para evaluar si la
+corrección aprendida continúa siendo adecuada para las decisiones de control.
+Las secciones siguientes precisan la interpretación de la incertidumbre, los
+cambios de distribución y la validez durante la operación.
+
 \section{Incertidumbre predictiva}
 
 \subsection{Incertidumbre aleatoria}
