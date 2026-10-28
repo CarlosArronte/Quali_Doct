@@ -1334,14 +1334,6 @@ relacionadas, pero diferentes.
 % uncertainty != OOD != validity.
 %
 % Proponer una señal de trabajo:
-\begin{equation}
-C_k = g\!\left(
-U_{\mathrm{epi},k},
-U_{\mathrm{ale},k},
-\mathrm{Cal}_k,
-S_{\mathrm{OOD},k}
-\right),
-\end{equation}
 %
 % donde C_k no se define como ``probabilidad de estar correcto'' salvo
 % que posteriormente exista una calibración que justifique esa lectura.
@@ -1350,6 +1342,79 @@ S_{\mathrm{OOD},k}
 % control, no solo por AUROC de detección.
 % Evaluar si detecta degradación sin conocer el parámetro que la causa;
 % no interpretar C_k como una estimación de fricción, masa o rigidez lateral.
+
+En esta tesis, la \emph{validez} del residual se entiende como su adecuación
+para la función que cumple dentro del modelo de predicción del controlador en
+las condiciones actuales. Un residual es válido en sentido operativo cuando
+su corrección mantiene una calidad suficiente para sustentar las decisiones
+del MPC/NMPC. Esta definición es relativa a la tarea, al horizonte y a las
+variables que afectan el control; no exige que el modelo aprendido identifique
+la causa física de la discrepancia ni que reproduzca con igual precisión todos
+los aspectos de la planta.
+
+Conviene distinguir cuatro conceptos. La incertidumbre predictiva expresa la
+dispersión que el modelo atribuye a su predicción; el indicador OOD caracteriza
+el alejamiento respecto de un dominio de referencia; la validez describe la
+adecuación efectiva del residual para el uso previsto; y la confianza es una
+estimación disponible durante la operación sobre esa validez, antes de conocer
+la respuesta futura de la planta. En forma resumida,
+\begin{equation}
+    \mathrm{incertidumbre}
+    \neq
+    \mathrm{OOD}
+    \neq
+    \mathrm{validez}
+    \neq
+    \mathrm{confianza}.
+    \label{eq:uncertainty_ood_validity_confidence}
+\end{equation}
+Las cuatro nociones pueden estar relacionadas, pero ninguna sustituye
+automáticamente a las demás. Un punto puede encontrarse lejos de los datos y
+seguir admitiendo una corrección útil; también puede producirse un error
+elevado y confiado ante un cambio dinámico latente.
+
+La confianza durante la operación se representa mediante una señal escalar
+$C_k$, normalizada de modo que valores mayores indiquen mayor respaldo para
+utilizar el residual. La formulación de trabajo es
+\begin{equation}
+    C_k
+    =
+    g\!\left(
+        U_{\mathrm{epi},k},
+        U_{\mathrm{ale},k},
+        \mathrm{Cal}_k,
+        S_{\mathrm{OOD},k}
+    \right),
+    \qquad 0\leq C_k\leq 1,
+    \label{eq:runtime_confidence_signal}
+\end{equation}
+donde $S_{\mathrm{OOD},k}$ es la puntuación de alejamiento seleccionada y
+$\mathrm{Cal}_k$ representa la información o transformación de calibración
+aplicable a las señales probabilísticas. Esta última no tiene que ser una
+nueva medición instantánea: puede corresponder a parámetros de recalibración
+obtenidos con un conjunto reservado y, si el método lo permite, a un
+diagnóstico local. La forma de $g$ no se fija a priori. Debe determinarse tras
+estudiar la sensibilidad, la redundancia y la complementariedad de sus
+componentes; si una señal no aporta información, la representación final puede
+prescindir de ella.
+
+$C_k$ no se interpreta como la probabilidad de que la predicción sea correcta,
+salvo que se defina un evento de validez y se demuestre empíricamente esa
+calibración probabilística. En su formulación inicial es un índice de respaldo
+relativo. Tampoco estima $\mu$, $m$, $C_f$ o $C_r$: debe poder responder a una
+degradación sin identificar cuál de esos parámetros cambió. Esta separación
+permite que el mismo mecanismo se evalúe frente a diferentes familias de
+cambio, aunque sus umbrales y su sensibilidad puedan no ser universales.
+
+Durante la operación, $U_{\mathrm{epi},k}$,
+$U_{\mathrm{ale},k}$ y $S_{\mathrm{OOD},k}$ pueden calcularse a partir de la
+entrada actual antes de observar $\mathbf{d}_k$. La validez efectiva solo
+puede contrastarse posteriormente, cuando se dispone de la transición de la
+planta o de una medida de desempeño en lazo cerrado. Por ello, el diseño de
+$C_k$ debe separar los datos utilizados para entrenar el residual, calibrar
+las señales, elegir la función $g$ y evaluar la generalización. Sin esta
+separación, el índice podría describir los escenarios empleados para ajustarlo
+sin estimar de forma fiable la validez durante una operación nueva.
 
 \section{Validez relevante para el control}
 
@@ -1360,6 +1425,92 @@ S_{\mathrm{OOD},k}
 % - degradación closed-loop.
 %
 % Esta sección es una de las claves para demostrar profundidad doctoral.
+
+La precisión del residual a un paso constituye el primer nivel de evaluación,
+pero no determina por sí sola su relevancia para el control. Si
+$\mathbf{d}_k$ es la discrepancia real respecto de B0 y
+$\hat{\mathbf{d}}_k$ la corrección aprendida, los errores del modelo físico y
+del modelo híbrido pueden escribirse como
+\begin{equation}
+    \mathbf{e}^{\mathrm{B0}}_{d,k}=\mathbf{d}_k,
+    \qquad
+    \mathbf{e}^{\mathrm{hyb}}_{d,k}
+    =
+    \mathbf{d}_k-\hat{\mathbf{d}}_k.
+    \label{eq:physics_hybrid_residual_errors}
+\end{equation}
+Para una función de pérdida $\ell_d$, la ganancia predictiva instantánea del
+residual respecto del modelo físico es
+\begin{equation}
+    G^{(1)}_k
+    =
+    \ell_d\!\left(\mathbf{e}^{\mathrm{B0}}_{d,k}\right)
+    -
+    \ell_d\!\left(\mathbf{e}^{\mathrm{hyb}}_{d,k}\right).
+    \label{eq:one_step_residual_gain}
+\end{equation}
+Un valor positivo indica que la corrección mejora la predicción a un paso;
+uno negativo indica que resulta perjudicial para esa transición. Esta medida
+permite comprobar si el aprendizaje aporta valor frente a B0, pero todavía no
+recoge la propagación del error ni la sensibilidad de la optimización.
+
+El segundo nivel corresponde al error dinámico acumulado. Al aplicar
+recursivamente el modelo sobre un horizonte $H$, se obtiene
+\begin{equation}
+    \mathbf{e}_{x,i\mid k}
+    =
+    \mathbf{x}_{k+i}
+    -
+    \hat{\mathbf{x}}_{k+i\mid k},
+    \qquad i=1,\ldots,H.
+    \label{eq:multistep_state_prediction_error}
+\end{equation}
+Incluso un sesgo pequeño a un paso puede acumularse, mientras que errores de
+signo alternante pueden compensarse parcialmente. Además, el propio
+controlador modifica las entradas futuras, por lo que la evaluación de
+trayectorias abiertas no reproduce necesariamente la distribución de estados
+visitada en lazo cerrado.
+
+El tercer nivel es la relevancia para la decisión. El MPC/NMPC pondera los
+estados, las entradas y las restricciones mediante la función de costo de la
+ecuación~\eqref{eq:mpc_cost}. En consecuencia, errores de igual magnitud
+estadística pueden tener efectos distintos: una discrepancia en una dirección
+poco sensible puede no cambiar la primera acción optimizada, mientras que un
+error menor cerca de una restricción o durante una maniobra exigente puede
+alterar la secuencia de control. Una medida de error relevante para el
+control debe, por tanto, considerar la propagación sobre el horizonte, las
+ponderaciones del problema y la proximidad a restricciones, y no solo el RMSE
+promedio del predictor.
+
+El cuarto nivel es el desempeño observado en lazo cerrado. La validez estimada
+solo resulta útil para la tesis si su uso permite reducir la degradación de
+seguimiento, las violaciones de restricciones o el costo de control bajo los
+cambios estudiados, manteniendo la factibilidad computacional. La relación que
+se evaluará es, por tanto,
+\begin{equation}
+    \begin{aligned}
+        \text{cambio de condición}
+        &\longrightarrow
+        \text{error del residual} \\
+        &\longrightarrow
+        \text{efecto en la optimización}
+        \longrightarrow
+        \text{desempeño en lazo cerrado}.
+    \end{aligned}
+    \label{eq:validity_control_relevance_chain}
+\end{equation}
+Esta cadena evita definir la validez únicamente mediante una etiqueta OOD o
+una métrica probabilística.
+
+La evaluación de $C_k$ deberá comprobar su asociación con los cuatro niveles:
+ganancia predictiva frente a B0, error multietapa, alteración relevante de las
+decisiones y degradación en lazo cerrado. También deberá incluir casos en los
+que un cambio físico no perjudique el residual y casos de fallo confiado. De
+este modo se evita premiar una señal que responda a cualquier cambio aunque
+este no importe para el controlador. La adaptación concreta del MPC/NMPC se
+define en los capítulos metodológicos; conceptualmente, $C_k$ informa la
+decisión de cuánto confiar en la corrección, pero no constituye una garantía
+formal de estabilidad, factibilidad recursiva o seguridad.
 
 
 % ============================================================
